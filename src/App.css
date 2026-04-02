@@ -216,3 +216,15 @@ textarea {
     padding: 6px;
   }
 }
+
+
+.main-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+}

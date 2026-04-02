@@ -1,3 +1,4 @@
+import "./App.css";
 import { useState, useEffect, useRef } from "react";
 import carBg from "./assets/car.jpg";
 
@@ -273,11 +274,18 @@ function Sidebar({ active, setActive, user, onLogout }) {
   ];
 
   return (
-    <div style={{
-      width: 220, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`,
-      display: "flex", flexDirection: "column", padding: "24px 14px",
-      minHeight: "100vh", position: "sticky", top: 0,
-    }}>
+   <div style={{
+  width: "100%",
+  maxWidth: 220,
+  background: COLORS.surface,
+  borderRight: `1px solid ${COLORS.border}`,
+  display: "flex",
+  flexDirection: "column",
+  padding: "24px 14px",
+  minHeight: "100vh",
+  position: "sticky",
+  top: 0,
+}}>
       <div style={{ marginBottom: 28, paddingLeft: 8 }}>
         <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800 }}>
           Zuxter<span style={{ color: COLORS.accent }}>X</span>
@@ -695,7 +703,8 @@ export default function App() {
   const Page = pages[active];
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+   <div className="main-container">
+
       <style>{css}</style>
 
       <Sidebar active={active} setActive={setActive} user={user} onLogout={handleLogout} />
