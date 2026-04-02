@@ -1,3 +1,5 @@
+import os
+API_KEY = os.getenv("AIzaSyDDrbH5TmQYIQ8e03rZ44bk11rgQVUlQAI")
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
