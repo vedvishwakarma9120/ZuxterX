@@ -7,8 +7,6 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = "AIzaSyAdgADG60tuwjmOL2W6DnAJNfAPKtB5frU"
-
 @app.route("/api/ai", methods=["POST"])
 def ai():
     try:
