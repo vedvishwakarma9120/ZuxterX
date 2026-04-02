@@ -709,7 +709,7 @@ export default function App() {
 
       <Sidebar active={active} setActive={setActive} user={user} onLogout={handleLogout} />
 
-      <main style={{ flex: 1, padding: "32px 36px", maxWidth: 820, overflowY: "auto" }}>
+      <main style={{ flex: 1, padding: "20px", maxWidth: "100%", overflowY: "auto" }}>
         <Page user={user} onUpdate={handleUpdate} currentUser={user} />
       </main>
 
