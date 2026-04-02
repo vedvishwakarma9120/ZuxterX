@@ -1,5 +1,5 @@
 import os
-API_KEY = os.getenv("AIzaSyDDrbH5TmQYIQ8e03rZ44bk11rgQVUlQAI")
+API_KEY = os.getenv("API_KEY")
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
@@ -7,7 +7,7 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = "AIzaSyDDrbH5TmQYIQ8e03rZ44bk11rgQVUlQAI"
+API_KEY = "AIzaSyAdgADG60tuwjmOL2W6DnAJNfAPKtB5frU"
 
 @app.route("/api/ai", methods=["POST"])
 def ai():
