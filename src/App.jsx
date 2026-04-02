@@ -76,15 +76,15 @@ function checkBadges(user) {
 
 //  Claude API call 
 async function callClaude(systemPrompt, userMsg) {
-  const res = await fetch("http://127.0.0.1:5000/api/ai", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      prompt: userMsg
-    })
-  });
+  const res = await fetch("https://zuxter-backend.onrender.com/api/ai", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    prompt: userMsg
+  })
+});
 
   const data = await res.json();
   return data.response;
