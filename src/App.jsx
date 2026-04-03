@@ -1,5 +1,12 @@
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
+ //base url
+const BASE_URL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000"
+    : "https://zuxter-backend.onrender.com";
+
+
 import carBg from "./assets/car.jpg";
 
 // Inline styles / design tokens
@@ -75,17 +82,20 @@ function checkBadges(user) {
   return [...earned];
 }
 
-//  Claude API call 
+
+
+//API CALL 
 async function callClaude(systemPrompt, userMsg) {
-  const res = await fetch("https://zuxter-backend.onrender.com/api/ai", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    prompt: userMsg
-  })
-});
+  const res = await fetch(`${BASE_URL}/api/ai`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + localStorage.getItem("token") 
+    },
+    body: JSON.stringify({
+      prompt: userMsg
+    })
+  });
 
   const data = await res.json();
   return data.response;
@@ -172,28 +182,66 @@ function AuthScreen({ onLogin }) {
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
 
-  function submit() {
-    setErr("");
-    if (!email || !pass) return setErr("Please fill all fields.");
-    const users = getUsers();
-    if (mode === "signup") {
-      if (!name) return setErr("Name required.");
-      if (users[email]) return setErr("Account already exists.");
-      const user = { name, email, pass, streak: 1, maxStreak: 1, lastActive: today(), plans: 0, qSets: 0, summaries: 0, badges: [], featuresUsed: [], xp: 0 };
-      users[email] = user;
-      saveUsers(users);
-      saveSession(email);
-      onLogin(user);
-    } else {
-      const u = users[email];
-      if (!u || u.pass !== pass) return setErr("Invalid credentials.");
-      const updated = updateStreak(u);
-      users[email] = updated;
-      saveUsers(users);
-      saveSession(email);
-      onLogin(updated);
+  async function submit() {
+  setErr("");
+
+  if (!email || !pass) return setErr("Please fill all fields.");
+
+  try {
+    const url =
+      mode === "login"
+        ? `${BASE_URL}/login`
+        : `${BASE_URL}/signup`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+     body: JSON.stringify({
+    name,
+    email,
+    password: pass
+})
+    });
+
+    const data = await res.json();
+
+    console.log("RESPONSE:", data);
+
+    // 🔥 HANDLE ERROR PROPERLY
+    if (!res.ok) {
+      if (mode === "login") {
+        return setErr(data.msg || "Invalid credentials");
+      } else {
+        return setErr(data.msg || "Signup failed");
+      }
     }
+
+    // ✅ LOGIN SUCCESS
+    if (mode === "login") {
+      if (!data.token) {
+        return setErr("Login failed (no token)");
+      }
+
+      localStorage.setItem("token", data.token);
+      onLogin({
+      name: data.name, 
+      email: data.email
+});;
+    }
+
+    // ✅ SIGNUP SUCCESS
+    else {
+      alert("Account created successfully ✅");
+      setMode("login");
+    }
+
+  } catch (err) {
+    console.log(err);
+    setErr("Server error");
   }
+}
 
   return (
   <div
