@@ -1,16 +1,14 @@
-
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
-import html2pdf from "html2pdf.js";
- //base url
+import html2pdf from "html2pdf.js/dist/html2pdf.bundle";
+
+// base url
 const BASE_URL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000"
     : "https://zuxter-backend.onrender.com";
 
-
 import carBg from "./assets/car.jpg";
-
 
 // Inline styles / design tokens
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');`;
@@ -43,28 +41,30 @@ const css = `
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
   @keyframes badgePop{0%{transform:scale(0) rotate(-15deg)}70%{transform:scale(1.2) rotate(4deg)}100%{transform:scale(1) rotate(0deg)}}
+  .main-container{display:flex;min-height:100vh}
 `;
 
-// Fake "DB" in memory
-const USERS_KEY = "sp_users";
+// Session helpers — store full user object, not just email
 const SESSION_KEY = "sp_session";
+const USERS_KEY = "sp_users";
+
 function getUsers() { try { return JSON.parse(localStorage.getItem(USERS_KEY) || "{}"); } catch { return {}; } }
 function saveUsers(u) { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
 function getSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } }
 function saveSession(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
-// Badges config 
+// Badges config
 const ALL_BADGES = [
-  { id: "first_plan", icon: "🎯", label: "First Plan", desc: "Generated your first study plan" },
-  { id: "streak3",   icon: "🔥", label: "On Fire",    desc: "3-day streak achieved" },
-  { id: "streak7",   icon: "⚡", label: "Lightning",  desc: "7-day streak achieved" },
-  { id: "ten_q",     icon: "🧠", label: "Quizzed",    desc: "Generated 10+ question sets" },
-  { id: "explorer",  icon: "🧭", label: "Explorer",   desc: "Tried all 3 AI features" },
-  { id: "top3",      icon: "🏆", label: "Top 3",      desc: "Reached top 3 on leaderboard" },
+  { id: "first_plan", icon: "🎯", label: "First Plan",  desc: "Generated your first study plan" },
+  { id: "streak3",   icon: "🔥", label: "On Fire",      desc: "3-day streak achieved" },
+  { id: "streak7",   icon: "⚡", label: "Lightning",    desc: "7-day streak achieved" },
+  { id: "ten_q",     icon: "🧠", label: "Quizzed",      desc: "Generated 10+ question sets" },
+  { id: "explorer",  icon: "🧭", label: "Explorer",     desc: "Tried all 3 AI features" },
+  { id: "top3",      icon: "🏆", label: "Top 3",        desc: "Reached top 3 on leaderboard" },
 ];
 
-//  Helpers 
+// Helpers
 const today = () => new Date().toISOString().slice(0, 10);
 
 function updateStreak(user) {
@@ -77,54 +77,77 @@ function updateStreak(user) {
 
 function checkBadges(user) {
   const earned = new Set(user.badges || []);
-  if (user.plans >= 1) earned.add("first_plan");
-  if (user.streak >= 3) earned.add("streak3");
-  if (user.streak >= 7) earned.add("streak7");
-  if (user.qSets >= 10) earned.add("ten_q");
+  if (user.plans >= 1)                           earned.add("first_plan");
+  if (user.streak >= 3)                          earned.add("streak3");
+  if (user.streak >= 7)                          earned.add("streak7");
+  if (user.qSets >= 10)                          earned.add("ten_q");
   if (user.featuresUsed && user.featuresUsed.length >= 3) earned.add("explorer");
   return [...earned];
 }
 
-
-
-//API CALL 
+// API CALL
 async function callClaude(systemPrompt, userMsg) {
   const res = await fetch(`${BASE_URL}/api/ai`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer " + localStorage.getItem("token") 
+      "Authorization": "Bearer " + localStorage.getItem("token"),
     },
-    body: JSON.stringify({
-      prompt: userMsg
-    })
+    body: JSON.stringify({ prompt: userMsg }),
   });
-
   const data = await res.json();
   return data.response;
 }
 
-// COMPONENTS
-
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
 
 function Spinner() {
+  const [deg, setDeg] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setDeg(d => (d + 10) % 360), 30);
+    return () => clearInterval(id);
+  }, []);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, color: COLORS.accent, fontSize: 14 }}>
       <div style={{
-        width: 18, height: 18, border: `2px solid ${COLORS.accentDim}`,
-        borderTop: `2px solid ${COLORS.accent}`, borderRadius: "50%",
-        animation: "spin .7s linear infinite",
+        width: 18, height: 18,
+        border: `2px solid ${COLORS.accentDim}`,
+        borderTop: `2px solid ${COLORS.accent}`,
+        borderRadius: "50%",
+        transform: `rotate(${deg}deg)`,
       }} />
       Generating with AI…
     </div>
   );
 }
 
+// Small spinner for inside buttons
+function BtnSpinner() {
+  const [deg, setDeg] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setDeg(d => (d + 10) % 360), 30);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span style={{
+      display: "inline-block",
+      width: 14, height: 14,
+      border: "2px solid rgba(0,0,0,0.2)",
+      borderTop: "2px solid #000",
+      borderRadius: "50%",
+      transform: `rotate(${deg}deg)`,
+      flexShrink: 0,
+    }} />
+  );
+}
+
 function Tag({ children, color = COLORS.accent }) {
   return (
     <span style={{
-      background: color + "22", color, border: `1px solid ${color}44`,
-      borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 600,
+      background: color + "22", color,
+      border: `1px solid ${color}44`,
+      borderRadius: 6, padding: "2px 10px",
+      fontSize: 11, fontWeight: 600,
       letterSpacing: ".05em", textTransform: "uppercase",
     }}>{children}</span>
   );
@@ -133,7 +156,8 @@ function Tag({ children, color = COLORS.accent }) {
 function Card({ children, style = {}, glow = false }) {
   return (
     <div style={{
-      background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+      background: COLORS.surface,
+      border: `1px solid ${COLORS.border}`,
       borderRadius: 16, padding: "22px 24px",
       boxShadow: glow ? `0 0 24px ${COLORS.accent}22` : "none",
       animation: "fadeUp .4s ease both",
@@ -146,13 +170,13 @@ function Btn({ children, onClick, variant = "primary", disabled = false, style =
   const base = {
     border: "none", borderRadius: 10, padding: "10px 22px",
     fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14,
-    cursor: disabled ? "not-allowed" : "pointer", transition: "all .18s",
-    opacity: disabled ? .5 : 1, ...style,
+    cursor: disabled ? "not-allowed" : "pointer",
+    transition: "all .18s", opacity: disabled ? .5 : 1, ...style,
   };
   const variants = {
     primary: { background: COLORS.accent, color: "#000" },
-    ghost: { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accent}44` },
-    danger: { background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44` },
+    ghost:   { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accent}44` },
+    danger:  { background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44` },
   };
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
 }
@@ -160,40 +184,71 @@ function Btn({ children, onClick, variant = "primary", disabled = false, style =
 function Input({ label, type = "text", value, onChange, placeholder }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {label && <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>{label}</label>}
+      {label && (
+        <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>
+          {label}
+        </label>
+      )}
       <input
-        type={type} value={value} onChange={e => onChange(e.target.value)}
+        type={type} value={value}
+        onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
-          borderRadius: 10, padding: "11px 14px", color: COLORS.text,
-          fontFamily: "'DM Sans',sans-serif", fontSize: 14, outline: "none",
-          transition: "border .18s",
+          background: COLORS.surfaceAlt,
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 10, padding: "11px 14px",
+          color: COLORS.text,
+          fontFamily: "'DM Sans',sans-serif",
+          fontSize: 14, outline: "none", transition: "border .18s",
         }}
         onFocus={e => e.target.style.borderColor = COLORS.accent}
-        onBlur={e => e.target.style.borderColor = COLORS.border}
+        onBlur={e  => e.target.style.borderColor = COLORS.border}
       />
     </div>
   );
 }
 
+// ✅ FIX 1 — SyllabusInput was completely missing, causing crash after login
+function SyllabusInput({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>
+        Syllabus / Topic
+      </label>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Paste your syllabus or topic here…"
+        rows={5}
+        style={{
+          background: COLORS.surfaceAlt,
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 10, padding: "11px 14px",
+          color: COLORS.text,
+          fontFamily: "'DM Sans',sans-serif",
+          fontSize: 14, outline: "none",
+          resize: "vertical", transition: "border .18s",
+        }}
+        onFocus={e => e.target.style.borderColor = COLORS.accent}
+        onBlur={e  => e.target.style.borderColor = COLORS.border}
+      />
+    </div>
+  );
+}
 
+// ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 
-// Auth Screen 
 function AuthScreen({ onLogin }) {
-
-  const [mode, setMode] = useState("login");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-
-  
+  const [mode, setMode]     = useState("login");
+  const [name, setName]     = useState("");
+  const [email, setEmail]   = useState("");
+  const [pass, setPass]     = useState("");
+  const [err, setErr]       = useState("");
   const [loading, setLoading] = useState(false);
 
   async function submit() {
     setErr("");
-    setLoading(true); // 🔥 START LOADING
+    setLoading(true);
 
     if (!email || !pass) {
       setErr("Please fill all fields.");
@@ -202,337 +257,164 @@ function AuthScreen({ onLogin }) {
     }
 
     try {
-      const url =
-        mode === "login"
-          ? `${BASE_URL}/login`
-          : `${BASE_URL}/signup`;
+      const url = mode === "login" ? `${BASE_URL}/login` : `${BASE_URL}/signup`;
 
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          password: pass
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password: pass }),
       });
 
       const data = await res.json();
 
-      console.log("RESPONSE:", data);
-
       if (!res.ok) {
-        setErr(data.msg || (mode === "login" ? "Invalid credentials" : "Signup failed"));
+        setErr(data.msg || "Error");
         setLoading(false);
         return;
       }
 
-      // ✅ LOGIN SUCCESS
       if (mode === "login") {
-        if (!data.token) {
-          setErr("Login failed (no token)");
-          setLoading(false);
-          return;
-        }
-
         localStorage.setItem("token", data.token);
-
-        onLogin({
-          name: data.name,
-          email: data.email
-        });
-      }
-
-      // ✅ SIGNUP SUCCESS
-      else {
+        const userObj = { name: data.name, email: data.email };
+        onLogin(userObj);
+      } else {
         alert("Account created successfully ✅");
         setMode("login");
       }
-
-    } catch (err) {
-      console.log(err);
+    } catch {
       setErr("Server error");
     }
 
-    setLoading(false); // 🔥 STOP LOADING
+    setLoading(false);
   }
 
   return (
-  <div
-    style={{
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundImage: `url(${carBg})`, // 👈 car image
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      position: "relative",
-      padding: 24,
-    }}
-  >
-    {/* Dark overlay */}
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)"
-      }}
-    ></div>
+    <div style={{
+      minHeight: "100vh", display: "flex",
+      alignItems: "center", justifyContent: "center",
+      backgroundImage: `url(${carBg})`,
+      backgroundSize: "cover", backgroundPosition: "center", padding: 20,
+    }}>
+      <div style={{ width: "100%", maxWidth: "420px" }}>
 
-    <style>{css}</style>
+        {/* LOGO */}
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{ fontSize: 42 }}>📚</div>
+          <h1 style={{ fontSize: 32, fontWeight: 800 }}>
+            Zuxter<span style={{ color: COLORS.accent }}>X</span>
+          </h1>
+          <p style={{ color: COLORS.muted }}>Your AI-powered study companion</p>
+        </div>
 
-    {/* Main content */}
-    <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 420, animation: "fadeUp .5s ease" }}>
-      
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
-        <div style={{ fontSize: 42, marginBottom: 8 }}>📚</div>
-        <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 32, fontWeight: 800, color: COLORS.text }}>
-          Zuxter<span style={{ color: COLORS.accent }}>X</span>
-        </h1>
-        <p style={{ color: COLORS.muted, marginTop: 6, fontSize: 14 }}>
-          Your AI-powered study companion
-        </p>
+        <Card>
+          {/* TOGGLE */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+            {["login", "signup"].map(m => (
+              <button key={m} onClick={() => { setMode(m); setErr(""); }}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                  cursor: "pointer",
+                  background: mode === m ? COLORS.accent : COLORS.surfaceAlt,
+                  color: mode === m ? "#000" : COLORS.muted,
+                }}>
+                {m === "login" ? "Sign In" : "Sign Up"}
+              </button>
+            ))}
+          </div>
+
+          {/* INPUTS */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {mode === "signup" && <Input label="Full Name" value={name} onChange={setName} />}
+            <Input label="Email" value={email} onChange={setEmail} />
+            <Input label="Password" type="password" value={pass} onChange={setPass} />
+            {err && <p style={{ color: "red" }}>{err}</p>}
+            <Btn onClick={submit} disabled={loading}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {loading && <BtnSpinner />}
+                {loading
+                  ? (mode === "login" ? "Signing In…" : "Creating Account…")
+                  : (mode === "login" ? "Sign In →" : "Create Account →")}
+              </span>
+            </Btn>
+          </div>
+        </Card>
       </div>
-
-      <Card>
-        <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-          {["login", "signup"].map(m => (
-            <button key={m} onClick={() => { setMode(m); setErr(""); }}
-              style={{
-                flex: 1, padding: "9px 0", borderRadius: 8, border: "none", cursor: "pointer",
-                fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 13,
-                background: mode === m ? COLORS.accent : COLORS.surfaceAlt,
-                color: mode === m ? "#000" : COLORS.muted, transition: "all .18s",
-              }}>
-              {m === "login" ? "Sign In" : "Sign Up"}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {mode === "signup" && <Input label="Full Name" value={name} onChange={setName} placeholder="Ada Lovelace" />}
-          <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-          <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="••••••••" />
-          {err && <p style={{ color: COLORS.danger, fontSize: 13 }}>{err}</p>}
-          <Btn
-  onClick={submit}
-  disabled={loading}
-  style={{
-    marginTop: 4,
-    width: "100%",
-    padding: "12px",
-    opacity: loading ? 0.7 : 1,
-    cursor: loading ? "not-allowed" : "pointer",
-    position: "relative",
-    overflow: "hidden",
-  }}
->
-  {loading ? (
-    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-      
-      <span
-        style={{
-          width: 16,
-          height: 16,
-          border: "2px solid #000",
-          borderTop: "2px solid transparent",
-          borderRadius: "50%",
-          animation: "spin 0.8s linear infinite"
-        }}
-      />
-
-      Please wait...
-    </span>
-  ) : (
-    mode === "login" ? "Sign In →" : "Create Account →"
-  )}
-</Btn>
-        </div>
-      </Card>
     </div>
-  </div>
-);
+  );
 }
 
-// SIDEBAR NAV
+// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+
 function Sidebar({ active, setActive, user, onLogout }) {
   const nav = [
-    { id: "planner", icon: "🗓", label: "Study Planner" },
-    { id: "questions", icon: "❓", label: "Questions" },
-    { id: "summary", icon: "📝", label: "Summaries" },
-    { id: "badges", icon: "🏅", label: "Badges" },
-    { id: "leaderboard", icon: "🏆", label: "Leaderboard" },
+    { id: "planner",     label: "Planner" },
+    { id: "questions",   label: "Questions" },
+    { id: "summary",     label: "Summary" },
+    { id: "badges",      label: "Badges" },
+    { id: "leaderboard", label: "Leaderboard" },
   ];
 
   return (
-   <div style={{
-  width: "100%",
-  maxWidth: 220,
-  background: COLORS.surface,
-  borderRight: `1px solid ${COLORS.border}`,
-  display: "flex",
-  flexDirection: "column",
-  padding: "24px 14px",
-  minHeight: "100vh",
-  position: "sticky",
-  top: 0,
-}}>
-      <div style={{ marginBottom: 28, paddingLeft: 8 }}>
-        <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800 }}>
-          Zuxter<span style={{ color: COLORS.accent }}>X</span>
-        </h2>
+    <div style={{
+      width: "220px", background: COLORS.surface,
+      borderRight: `1px solid ${COLORS.border}`,
+      padding: "20px", display: "flex", flexDirection: "column", minHeight: "100vh",
+    }}>
+      <h2 style={{ marginBottom: 20 }}>Zuxter<span style={{ color: COLORS.accent }}>X</span></h2>
+
+      <div style={{ marginBottom: 20 }}>
+        <div>{user.name}</div>
+        <div style={{ fontSize: 12, color: COLORS.muted }}>{user.email}</div>
       </div>
 
-      {/* User card */}
-      <div style={{
-        background: COLORS.surfaceAlt, borderRadius: 12, padding: "12px 14px",
-        marginBottom: 24, border: `1px solid ${COLORS.border}`,
-      }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: COLORS.text }}>{user.name}</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{user.email}</div>
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 16 }}>🔥</span>
-          <span style={{ fontSize: 13, color: COLORS.gold, fontWeight: 600 }}>{user.streak} day streak</span>
-        </div>
-        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 14 }}>⭐</span>
-          <span style={{ fontSize: 13, color: COLORS.blue, fontWeight: 600 }}>{user.xp || 0} XP</span>
-        </div>
-      </div>
-
-      {/* Nav links */}
-      <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-        {nav.map(({ id, icon, label }) => (
-          <button key={id} onClick={() => setActive(id)}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {nav.map(item => (
+          <button key={item.id} onClick={() => setActive(item.id)}
             style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 12px", borderRadius: 10, border: "none",
-              cursor: "pointer", textAlign: "left", transition: "all .15s",
-              fontFamily: "'DM Sans',sans-serif", fontWeight: active === id ? 600 : 400,
-              fontSize: 14,
-              background: active === id ? COLORS.accentDim : "transparent",
-              color: active === id ? COLORS.accent : COLORS.muted,
-              borderLeft: active === id ? `2px solid ${COLORS.accent}` : "2px solid transparent",
+              padding: "10px", border: "none", borderRadius: 8, cursor: "pointer",
+              background: active === item.id ? COLORS.accent : "transparent",
+              color: active === item.id ? "#000" : COLORS.muted,
             }}>
-            <span style={{ fontSize: 16 }}>{icon}</span> {label}
+            {item.label}
           </button>
         ))}
-      </nav>
+      </div>
 
-      <Btn variant="danger" onClick={onLogout} style={{ marginTop: 16, width: "100%" }}>Sign Out</Btn>
-    </div>
-  );
-}
-
-//  SYLLABUS INPUT 
-function SyllabusInput({ value, onChange }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>
-        Syllabus / Topic Input
-      </label>
-      <textarea
-        value={value} onChange={e => onChange(e.target.value)}
-        placeholder="Paste your syllabus, topic list, or any subject content here…"
-        rows={5}
+      <button onClick={onLogout}
         style={{
-          background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
-          borderRadius: 12, padding: "14px 16px", color: COLORS.text,
-          fontFamily: "'DM Sans',sans-serif", fontSize: 14, outline: "none",
-          resize: "vertical", lineHeight: 1.6, transition: "border .18s",
-        }}
-        onFocus={e => e.target.style.borderColor = COLORS.accent}
-        onBlur={e => e.target.style.borderColor = COLORS.border}
-      />
+          marginTop: "auto", padding: "10px", border: "none",
+          borderRadius: 8, background: COLORS.danger, color: "#fff", cursor: "pointer",
+        }}>
+        Logout
+      </button>
     </div>
   );
 }
 
+// ─── PDF DOWNLOAD ─────────────────────────────────────────────────────────────
 
 function downloadPDF(content, title = "Study Output") {
   const lines = content.split("\n");
-
   let formattedHTML = "";
 
   for (let line of lines) {
-
     if (/^\s*\d+\./.test(line)) {
-      formattedHTML += `<p style="font-weight:700; font-size:18px; margin-top:12px;">
-        ${line}
-      </p>`;
-    }
-    else if (/^\s*[-•]/.test(line)) {
-      formattedHTML += `<p style="margin-left:15px; font-size:14px;">
-        ${line}
-      </p>`;
-    }
-    else {
-      formattedHTML += `<p style="font-size:14px;">
-        ${line}
-      </p>`;
+      formattedHTML += `<p style="font-weight:700;font-size:18px;margin-top:12px;">${line}</p>`;
+    } else if (/^\s*[-•]/.test(line)) {
+      formattedHTML += `<p style="margin-left:15px;font-size:14px;">${line}</p>`;
+    } else {
+      formattedHTML += `<p style="font-size:14px;">${line}</p>`;
     }
   }
 
   const element = document.createElement("div");
-
   element.innerHTML = `
-    <div style="
-      position: relative;
-      font-family: Arial, sans-serif;
-      padding: 30px;
-      color: #000;
-      line-height: 1.6;
-    ">
-
-      <!-- 🔥 WATERMARK -->
-      <div style="
-        position:absolute;
-        top:50%;
-        left:50%;
-        transform:translate(-50%, -50%) rotate(-30deg);
-        font-size:60px;
-        color:rgba(0,0,0,0.04);
-        font-weight:900;
-        pointer-events:none;
-        white-space:nowrap;
-      ">
-        ZuxterX
-      </div>
-
-      <!-- 🔥 TOP RIGHT BRAND -->
-      <div style="
-        position:absolute;
-        top:15px;
-        right:25px;
-        font-size:14px;
-        font-weight:700;
-        color:#000;
-      ">
-        ZuxterX
-      </div>
-
-      <!-- 🔥 TITLE (FIXED STRONG) -->
-      <h2 style="
-        text-align:center;
-        margin-bottom:25px;
-        font-size:26px;
-        font-weight:900;
-        color:#000;
-        opacity:1;
-        letter-spacing:0.5px;
-        border-bottom:2px solid #000;
-        padding-bottom:10px;
-      ">
-        ${title}
-      </h2>
-
+    <div style="position:relative;font-family:Arial,sans-serif;padding:30px;color:#000;line-height:1.6;">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:60px;color:rgba(0,0,0,0.04);font-weight:900;pointer-events:none;white-space:nowrap;">ZuxterX</div>
+      <div style="position:absolute;top:15px;right:25px;font-size:14px;font-weight:700;color:#000;">ZuxterX</div>
+      <h2 style="text-align:center;margin-bottom:25px;font-size:26px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:10px;">${title}</h2>
       ${formattedHTML}
-
-    </div>
-  `;
+    </div>`;
 
   html2pdf()
     .set({
@@ -546,44 +428,22 @@ function downloadPDF(content, title = "Study Output") {
     .save();
 }
 
-
-
+// ─── FORMAT RESPONSE ──────────────────────────────────────────────────────────
 
 function formatResponse(text) {
-  const lines = text.split("\n");
-
-  return lines.map((line, index) => {
-
-    // Question (1. , 2. etc.)
+  return text.split("\n").map((line, index) => {
     if (/^\s*\d+\./.test(line)) {
-      return (
-        <p key={index} style={{ fontWeight: "700", color: "#00e5a0", marginTop: "12px" }}>
-          {line}
-        </p>
-      );
+      return <p key={index} style={{ fontWeight: "700", color: "#00e5a0", marginTop: "12px" }}>{line}</p>;
     }
-
-    // Bullet points
     if (/^\s*[-•]/.test(line)) {
-      return (
-        <p key={index} style={{ marginLeft: "15px" }}>
-          {line}
-        </p>
-      );
+      return <p key={index} style={{ marginLeft: "15px" }}>{line}</p>;
     }
-
-    // Normal text
-    return (
-      <p key={index} style={{ margin: "6px 0" }}>
-        {line}
-      </p>
-    );
-
+    return <p key={index} style={{ margin: "6px 0" }}>{line}</p>;
   });
 }
 
+// ─── RESULT BLOCK ─────────────────────────────────────────────────────────────
 
-// AI RESULT BLOCK 
 function ResultBlock({ text, label, color = COLORS.accent }) {
   const [copied, setCopied] = useState(false);
 
@@ -595,86 +455,52 @@ function ResultBlock({ text, label, color = COLORS.accent }) {
 
   return (
     <div style={{
-      background: COLORS.surfaceAlt,
-      border: `1px solid ${color}33`,
-      borderRadius: 14,
-      padding: "18px 20px",
-      marginTop: 16,
-      animation: "fadeUp .4s ease",
+      background: COLORS.surfaceAlt, border: `1px solid ${color}33`,
+      borderRadius: 14, padding: "18px 20px",
+      marginTop: 16, animation: "fadeUp .4s ease",
     }}>
-
-      {/* TOP BAR */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12
-      }}>
-
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <Tag color={color}>{label}</Tag>
-
-        {/* ✅ BUTTONS */}
         <div style={{ display: "flex", gap: "10px" }}>
-
-          {/* Copy Button */}
-          <button onClick={copy}
-            style={{
-              background: "transparent",
-              border: `1px solid ${COLORS.border}`,
-              borderRadius: 7,
-              padding: "5px 12px",
-              color: COLORS.muted,
-              fontSize: 12,
-              cursor: "pointer",
-              fontFamily: "'DM Sans',sans-serif",
-            }}>
+          <button onClick={copy} style={{
+            background: "transparent", border: `1px solid ${COLORS.border}`,
+            borderRadius: 7, padding: "5px 12px",
+            color: COLORS.muted, fontSize: 12, cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
+          }}>
             {copied ? "✓ Copied" : "Copy"}
           </button>
-
-          {/* 🔥 Download PDF Button */}
-          <button onClick={() => downloadPDF(text,label)}
-            style={{
-              background: "#00e5a022",
-              border: "1px solid #00e5a0",
-              borderRadius: 7,
-              padding: "5px 12px",
-              color: "#00e5a0",
-              fontSize: "12px",
-              cursor: "pointer",
-              fontFamily: "'DM Sans',sans-serif",
-            }}>
+          <button onClick={() => downloadPDF(text, label)} style={{
+            background: "#00e5a022", border: "1px solid #00e5a0",
+            borderRadius: 7, padding: "5px 12px",
+            color: "#00e5a0", fontSize: "12px", cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
+          }}>
             Download PDF
           </button>
-
         </div>
       </div>
 
-      {/* RESULT CONTENT */}
-    <div style={{
-  textAlign: "left",
-  lineHeight: "1.8",
-  fontSize: "15px",
-  background: "#0f172a",
-  padding: "20px",
-  borderRadius: "12px",
-  border: "1px solid rgba(0,255,200,0.2)",
-  boxShadow: "0 0 15px rgba(0,255,200,0.1)",
-  color: "#e2e8f0",
-  fontFamily: "'DM Sans',sans-serif"
-}}>
-  {formatResponse(text)}
-</div>
-
+      <div style={{
+        textAlign: "left", lineHeight: "1.8", fontSize: "15px",
+        background: "#0f172a", padding: "20px", borderRadius: "12px",
+        border: "1px solid rgba(0,255,200,0.2)",
+        boxShadow: "0 0 15px rgba(0,255,200,0.1)",
+        color: "#e2e8f0", fontFamily: "'DM Sans',sans-serif",
+      }}>
+        {formatResponse(text)}
+      </div>
     </div>
   );
 }
 
-// PLANNER PAGE
+// ─── PLANNER PAGE ─────────────────────────────────────────────────────────────
+
 function PlannerPage({ user, onUpdate }) {
   const [syllabus, setSyllabus] = useState("");
-  const [days, setDays] = useState("7");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [days, setDays]         = useState("7");
+  const [result, setResult]     = useState("");
+  const [loading, setLoading]   = useState(false);
 
   async function generate() {
     if (!syllabus.trim()) return;
@@ -706,17 +532,18 @@ function PlannerPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label={syllabus} color={COLORS.gold} />}
+      {result && <ResultBlock text={result} label="Study Plan" color={COLORS.gold} />}
     </div>
   );
 }
 
-//QUESTIONS PAGE
+// ─── QUESTIONS PAGE ───────────────────────────────────────────────────────────
+
 function QuestionsPage({ user, onUpdate }) {
   const [syllabus, setSyllabus] = useState("");
-  const [level, setLevel] = useState("mixed");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [level, setLevel]       = useState("mixed");
+  const [result, setResult]     = useState("");
+  const [loading, setLoading]   = useState(false);
 
   async function generate() {
     if (!syllabus.trim()) return;
@@ -745,15 +572,14 @@ function QuestionsPage({ user, onUpdate }) {
             <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>Difficulty Level</label>
             <div style={{ display: "flex", gap: 8 }}>
               {["easy", "mixed", "hard"].map(l => (
-                <button key={l} onClick={() => setLevel(l)}
-                  style={{
-                    flex: 1, padding: "9px 0", borderRadius: 8,
-                    border: `1px solid ${level === l ? COLORS.blue : COLORS.border}`,
-                    background: level === l ? COLORS.blue + "22" : "transparent",
-                    color: level === l ? COLORS.blue : COLORS.muted,
-                    cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-                    fontWeight: 600, fontSize: 13, textTransform: "capitalize", transition: "all .18s",
-                  }}>{l}</button>
+                <button key={l} onClick={() => setLevel(l)} style={{
+                  flex: 1, padding: "9px 0", borderRadius: 8,
+                  border: `1px solid ${level === l ? COLORS.blue : COLORS.border}`,
+                  background: level === l ? COLORS.blue + "22" : "transparent",
+                  color: level === l ? COLORS.blue : COLORS.muted,
+                  cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                  fontWeight: 600, fontSize: 13, textTransform: "capitalize", transition: "all .18s",
+                }}>{l}</button>
               ))}
             </div>
           </div>
@@ -763,17 +589,18 @@ function QuestionsPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label={syllabus}color={COLORS.blue} />}
+      {result && <ResultBlock text={result} label="Questions" color={COLORS.blue} />}
     </div>
   );
 }
 
-//SUMMARIES PAGE
+// ─── SUMMARY PAGE ─────────────────────────────────────────────────────────────
+
 function SummaryPage({ user, onUpdate }) {
   const [syllabus, setSyllabus] = useState("");
-  const [style, setStyle] = useState("concise");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [style, setStyle]       = useState("concise");
+  const [result, setResult]     = useState("");
+  const [loading, setLoading]   = useState(false);
 
   async function generate() {
     if (!syllabus.trim()) return;
@@ -802,15 +629,14 @@ function SummaryPage({ user, onUpdate }) {
             <label style={{ fontSize: 12, color: COLORS.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>Summary Style</label>
             <div style={{ display: "flex", gap: 8 }}>
               {["concise", "detailed", "bullet points"].map(s => (
-                <button key={s} onClick={() => setStyle(s)}
-                  style={{
-                    flex: 1, padding: "9px 0", borderRadius: 8,
-                    border: `1px solid ${style === s ? COLORS.gold : COLORS.border}`,
-                    background: style === s ? COLORS.gold + "22" : "transparent",
-                    color: style === s ? COLORS.gold : COLORS.muted,
-                    cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-                    fontWeight: 600, fontSize: 12, textTransform: "capitalize", transition: "all .18s",
-                  }}>{s}</button>
+                <button key={s} onClick={() => setStyle(s)} style={{
+                  flex: 1, padding: "9px 0", borderRadius: 8,
+                  border: `1px solid ${style === s ? COLORS.gold : COLORS.border}`,
+                  background: style === s ? COLORS.gold + "22" : "transparent",
+                  color: style === s ? COLORS.gold : COLORS.muted,
+                  cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+                  fontWeight: 600, fontSize: 12, textTransform: "capitalize", transition: "all .18s",
+                }}>{s}</button>
               ))}
             </div>
           </div>
@@ -820,12 +646,13 @@ function SummaryPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label={syllabus} color={COLORS.gold} />}
+      {result && <ResultBlock text={result} label="Summary" color={COLORS.gold} />}
     </div>
   );
 }
 
-// BADGES PAGE 
+// ─── BADGES PAGE ──────────────────────────────────────────────────────────────
+
 function BadgesPage({ user }) {
   const earned = new Set(user.badges || []);
   return (
@@ -853,14 +680,14 @@ function BadgesPage({ user }) {
           );
         })}
       </div>
-      <Card style={{ padding: "16px 20px" }}>
+      <Card style={{ width: "100%" }}>
         <div style={{ display: "flex", gap: 32 }}>
           {[
-            { label: "Plans Generated", val: user.plans || 0, icon: "🗓" },
-            { label: "Question Sets", val: user.qSets || 0, icon: "❓" },
-            { label: "Summaries", val: user.summaries || 0, icon: "📝" },
-            { label: "Max Streak", val: user.maxStreak || 0, icon: "🔥" },
-            { label: "Total XP", val: user.xp || 0, icon: "⭐" },
+            { label: "Plans Generated", val: user.plans    || 0, icon: "🗓" },
+            { label: "Question Sets",   val: user.qSets    || 0, icon: "❓" },
+            { label: "Summaries",       val: user.summaries|| 0, icon: "📝" },
+            { label: "Max Streak",      val: user.maxStreak|| 0, icon: "🔥" },
+            { label: "Total XP",        val: user.xp       || 0, icon: "⭐" },
           ].map(s => (
             <div key={s.label} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 22 }}>{s.icon}</div>
@@ -874,13 +701,13 @@ function BadgesPage({ user }) {
   );
 }
 
-// LEADERBOARD PAGE 
+// ─── LEADERBOARD PAGE ─────────────────────────────────────────────────────────
+
 function LeaderboardPage({ currentUser }) {
-  const users = getUsers();
+  const users  = getUsers();
   const sorted = Object.values(users)
     .sort((a, b) => (b.xp || 0) - (a.xp || 0))
     .slice(0, 10);
-
   const medals = ["🥇", "🥈", "🥉"];
 
   return (
@@ -928,46 +755,62 @@ function LeaderboardPage({ currentUser }) {
   );
 }
 
-
-// ROOT APP
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [active, setActive] = useState("planner");
+  const [user, setUser]         = useState(null);
+  const [active, setActive]     = useState("planner");
   const [newBadge, setNewBadge] = useState(null);
 
+
+  // Session check — token bhi hona chahiye, warna login screen dikhao
   useEffect(() => {
-    const email = getSession();
-    if (email) {
-      const users = getUsers();
-      if (users[email]) {
-        const updated = updateStreak(users[email]);
-        users[email] = updated;
-        saveUsers(users);
-        setUser(updated);
-      }
+    const savedUser = getSession();
+    const token = localStorage.getItem("token");
+    if (savedUser && savedUser.email && token) {
+      setUser(savedUser);
+    } else {
+      clearSession();
+      localStorage.removeItem("token");
     }
   }, []);
 
-  function handleLogin(u) { setUser(u); }
+  // ✅ FIX 3 — handleLogin mein saveSession call karo
+  function handleLogin(u) {
+    saveSession(u);   // poora user object save
+    setUser(u);
+  }
 
-  function handleLogout() { clearSession(); setUser(null); setActive("planner"); }
+  function handleLogout() {
+    clearSession();
+    localStorage.removeItem("token");
+    setUser(null);
+    setActive("planner");
+  }
 
+  // ✅ FIX 4 — handleUpdate mein user object ka fallback add karo
   function handleUpdate(feature) {
     const users = getUsers();
-    const u = { ...users[user.email] };
-    if (feature === "planner") { u.plans = (u.plans || 0) + 1; u.xp = (u.xp || 0) + 20; }
-    if (feature === "questions") { u.qSets = (u.qSets || 0) + 1; u.xp = (u.xp || 0) + 15; }
-    if (feature === "summary") { u.summaries = (u.summaries || 0) + 1; u.xp = (u.xp || 0) + 15; }
+    // agar localStorage mein nahi mila toh current user se fallback
+    const u = { ...(users[user.email] || user) };
+
+    if (feature === "planner")   { u.plans     = (u.plans    || 0) + 1; u.xp = (u.xp || 0) + 20; }
+    if (feature === "questions") { u.qSets     = (u.qSets    || 0) + 1; u.xp = (u.xp || 0) + 15; }
+    if (feature === "summary")   { u.summaries = (u.summaries|| 0) + 1; u.xp = (u.xp || 0) + 15; }
+
     const used = new Set(u.featuresUsed || []);
     used.add(feature);
     u.featuresUsed = [...used];
-    const prevBadges = new Set(u.badges || []);
-    u.badges = checkBadges(u);
-    const freshBadge = u.badges.find(b => !prevBadges.has(b));
+
+    const prevBadges  = new Set(u.badges || []);
+    u.badges          = checkBadges(u);
+    const freshBadge  = u.badges.find(b => !prevBadges.has(b));
+
     users[user.email] = u;
     saveUsers(users);
+    saveSession(u);   // session bhi update karo
     setUser(u);
+
     if (freshBadge) {
       const badge = ALL_BADGES.find(b => b.id === freshBadge);
       setNewBadge(badge);
@@ -977,12 +820,17 @@ export default function App() {
 
   if (!user) return <AuthScreen onLogin={handleLogin} />;
 
-  const pages = { planner: PlannerPage, questions: QuestionsPage, summary: SummaryPage, badges: BadgesPage, leaderboard: LeaderboardPage };
+  const pages = {
+    planner:     PlannerPage,
+    questions:   QuestionsPage,
+    summary:     SummaryPage,
+    badges:      BadgesPage,
+    leaderboard: LeaderboardPage,
+  };
   const Page = pages[active];
 
   return (
-   <div className="main-container">
-
+    <div className="main-container">
       <style>{css}</style>
 
       <Sidebar active={active} setActive={setActive} user={user} onLogout={handleLogout} />
