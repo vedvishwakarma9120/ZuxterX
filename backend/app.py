@@ -47,7 +47,7 @@ users = db["users"]
 def signup():
     data = request.json or {}
 
-    name = data.get("name")   # ✅ FIX
+    name = data.get("name")
     email = data.get("email")
     password = data.get("password")
 
@@ -60,7 +60,7 @@ def signup():
     hashed_password = generate_password_hash(password)
 
     users.insert_one({
-        "name": name,  # ✅ FIX (IMPORTANT)
+        "name": name,
         "email": email,
         "password": hashed_password,
         "xp": 0,
@@ -85,7 +85,7 @@ def login():
 
         return jsonify({
             "token": token,
-            "name": user.get("name", ""),   # ✅ FIX
+            "name": user.get("name", ""),
             "email": user.get("email", "")
         })
 
@@ -120,10 +120,22 @@ def get_profile():
 def ai():
     try:
         data = request.json or {}
-        prompt = data.get("prompt")
+        user_input = data.get("prompt")
 
-        if not prompt:
+        if not user_input:
             return jsonify({"response": "No prompt provided"}), 400
+
+        # 🔥 FORMATTED PROMPT (MAIN FIX)
+        prompt = f"""
+Format the answer in clean readable style:
+- Use numbering (1, 2, 3...)
+- Use simple bullet points with -
+- No symbols like # or **
+- Keep spacing clean
+
+Topic:
+{user_input}
+"""
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={API_KEY}"
 
@@ -158,4 +170,4 @@ def home():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)

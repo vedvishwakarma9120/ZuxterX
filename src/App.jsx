@@ -1,5 +1,7 @@
+
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
+import html2pdf from "html2pdf.js";
  //base url
 const BASE_URL =
   window.location.hostname === "localhost"
@@ -8,6 +10,7 @@ const BASE_URL =
 
 
 import carBg from "./assets/car.jpg";
+
 
 // Inline styles / design tokens
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');`;
@@ -174,74 +177,87 @@ function Input({ label, type = "text", value, onChange, placeholder }) {
   );
 }
 
-// AUTH SCREEN 
+
+
+// Auth Screen 
 function AuthScreen({ onLogin }) {
+
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
 
+  
+  const [loading, setLoading] = useState(false);
+
   async function submit() {
-  setErr("");
+    setErr("");
+    setLoading(true); // 🔥 START LOADING
 
-  if (!email || !pass) return setErr("Please fill all fields.");
+    if (!email || !pass) {
+      setErr("Please fill all fields.");
+      setLoading(false);
+      return;
+    }
 
-  try {
-    const url =
-      mode === "login"
-        ? `${BASE_URL}/login`
-        : `${BASE_URL}/signup`;
+    try {
+      const url =
+        mode === "login"
+          ? `${BASE_URL}/login`
+          : `${BASE_URL}/signup`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-     body: JSON.stringify({
-    name,
-    email,
-    password: pass
-})
-    });
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password: pass
+        })
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    console.log("RESPONSE:", data);
+      console.log("RESPONSE:", data);
 
-    // 🔥 HANDLE ERROR PROPERLY
-    if (!res.ok) {
+      if (!res.ok) {
+        setErr(data.msg || (mode === "login" ? "Invalid credentials" : "Signup failed"));
+        setLoading(false);
+        return;
+      }
+
+      // ✅ LOGIN SUCCESS
       if (mode === "login") {
-        return setErr(data.msg || "Invalid credentials");
-      } else {
-        return setErr(data.msg || "Signup failed");
+        if (!data.token) {
+          setErr("Login failed (no token)");
+          setLoading(false);
+          return;
+        }
+
+        localStorage.setItem("token", data.token);
+
+        onLogin({
+          name: data.name,
+          email: data.email
+        });
       }
-    }
 
-    // ✅ LOGIN SUCCESS
-    if (mode === "login") {
-      if (!data.token) {
-        return setErr("Login failed (no token)");
+      // ✅ SIGNUP SUCCESS
+      else {
+        alert("Account created successfully ✅");
+        setMode("login");
       }
 
-      localStorage.setItem("token", data.token);
-      onLogin({
-      name: data.name, 
-      email: data.email
-});;
+    } catch (err) {
+      console.log(err);
+      setErr("Server error");
     }
 
-    // ✅ SIGNUP SUCCESS
-    else {
-      alert("Account created successfully ✅");
-      setMode("login");
-    }
-
-  } catch (err) {
-    console.log(err);
-    setErr("Server error");
+    setLoading(false); // 🔥 STOP LOADING
   }
-}
 
   return (
   <div
@@ -301,9 +317,39 @@ function AuthScreen({ onLogin }) {
           <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
           <Input label="Password" type="password" value={pass} onChange={setPass} placeholder="••••••••" />
           {err && <p style={{ color: COLORS.danger, fontSize: 13 }}>{err}</p>}
-          <Btn onClick={submit} style={{ marginTop: 4, width: "100%", padding: "12px" }}>
-            {mode === "login" ? "Sign In →" : "Create Account →"}
-          </Btn>
+          <Btn
+  onClick={submit}
+  disabled={loading}
+  style={{
+    marginTop: 4,
+    width: "100%",
+    padding: "12px",
+    opacity: loading ? 0.7 : 1,
+    cursor: loading ? "not-allowed" : "pointer",
+    position: "relative",
+    overflow: "hidden",
+  }}
+>
+  {loading ? (
+    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+      
+      <span
+        style={{
+          width: 16,
+          height: 16,
+          border: "2px solid #000",
+          borderTop: "2px solid transparent",
+          borderRadius: "50%",
+          animation: "spin 0.8s linear infinite"
+        }}
+      />
+
+      Please wait...
+    </span>
+  ) : (
+    mode === "login" ? "Sign In →" : "Create Account →"
+  )}
+</Btn>
         </div>
       </Card>
     </div>
@@ -405,36 +451,220 @@ function SyllabusInput({ value, onChange }) {
   );
 }
 
+
+function downloadPDF(content, title = "Study Output") {
+  const lines = content.split("\n");
+
+  let formattedHTML = "";
+
+  for (let line of lines) {
+
+    if (/^\s*\d+\./.test(line)) {
+      formattedHTML += `<p style="font-weight:700; font-size:18px; margin-top:12px;">
+        ${line}
+      </p>`;
+    }
+    else if (/^\s*[-•]/.test(line)) {
+      formattedHTML += `<p style="margin-left:15px; font-size:14px;">
+        ${line}
+      </p>`;
+    }
+    else {
+      formattedHTML += `<p style="font-size:14px;">
+        ${line}
+      </p>`;
+    }
+  }
+
+  const element = document.createElement("div");
+
+  element.innerHTML = `
+    <div style="
+      position: relative;
+      font-family: Arial, sans-serif;
+      padding: 30px;
+      color: #000;
+      line-height: 1.6;
+    ">
+
+      <!-- 🔥 WATERMARK -->
+      <div style="
+        position:absolute;
+        top:50%;
+        left:50%;
+        transform:translate(-50%, -50%) rotate(-30deg);
+        font-size:60px;
+        color:rgba(0,0,0,0.04);
+        font-weight:900;
+        pointer-events:none;
+        white-space:nowrap;
+      ">
+        ZuxterX
+      </div>
+
+      <!-- 🔥 TOP RIGHT BRAND -->
+      <div style="
+        position:absolute;
+        top:15px;
+        right:25px;
+        font-size:14px;
+        font-weight:700;
+        color:#000;
+      ">
+        ZuxterX
+      </div>
+
+      <!-- 🔥 TITLE (FIXED STRONG) -->
+      <h2 style="
+        text-align:center;
+        margin-bottom:25px;
+        font-size:26px;
+        font-weight:900;
+        color:#000;
+        opacity:1;
+        letter-spacing:0.5px;
+        border-bottom:2px solid #000;
+        padding-bottom:10px;
+      ">
+        ${title}
+      </h2>
+
+      ${formattedHTML}
+
+    </div>
+  `;
+
+  html2pdf()
+    .set({
+      margin: 10,
+      filename: "zuxter-output.pdf",
+      image: { type: "jpeg", quality: 1 },
+      html2canvas: { scale: 3, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    })
+    .from(element)
+    .save();
+}
+
+
+
+
+function formatResponse(text) {
+  const lines = text.split("\n");
+
+  return lines.map((line, index) => {
+
+    // Question (1. , 2. etc.)
+    if (/^\s*\d+\./.test(line)) {
+      return (
+        <p key={index} style={{ fontWeight: "700", color: "#00e5a0", marginTop: "12px" }}>
+          {line}
+        </p>
+      );
+    }
+
+    // Bullet points
+    if (/^\s*[-•]/.test(line)) {
+      return (
+        <p key={index} style={{ marginLeft: "15px" }}>
+          {line}
+        </p>
+      );
+    }
+
+    // Normal text
+    return (
+      <p key={index} style={{ margin: "6px 0" }}>
+        {line}
+      </p>
+    );
+
+  });
+}
+
+
 // AI RESULT BLOCK 
 function ResultBlock({ text, label, color = COLORS.accent }) {
   const [copied, setCopied] = useState(false);
+
   function copy() {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
+
   return (
     <div style={{
-      background: COLORS.surfaceAlt, border: `1px solid ${color}33`,
-      borderRadius: 14, padding: "18px 20px", marginTop: 16,
+      background: COLORS.surfaceAlt,
+      border: `1px solid ${color}33`,
+      borderRadius: 14,
+      padding: "18px 20px",
+      marginTop: 16,
       animation: "fadeUp .4s ease",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+
+      {/* TOP BAR */}
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12
+      }}>
+
         <Tag color={color}>{label}</Tag>
-        <button onClick={copy}
-          style={{
-            background: "transparent", border: `1px solid ${COLORS.border}`,
-            borderRadius: 7, padding: "5px 12px", color: COLORS.muted,
-            fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-          }}>
-          {copied ? "✓ Copied" : "Copy"}
-        </button>
+
+        {/* ✅ BUTTONS */}
+        <div style={{ display: "flex", gap: "10px" }}>
+
+          {/* Copy Button */}
+          <button onClick={copy}
+            style={{
+              background: "transparent",
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 7,
+              padding: "5px 12px",
+              color: COLORS.muted,
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+            }}>
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+
+          {/* 🔥 Download PDF Button */}
+          <button onClick={() => downloadPDF(text,label)}
+            style={{
+              background: "#00e5a022",
+              border: "1px solid #00e5a0",
+              borderRadius: 7,
+              padding: "5px 12px",
+              color: "#00e5a0",
+              fontSize: "12px",
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+            }}>
+            Download PDF
+          </button>
+
+        </div>
       </div>
-      <pre style={{
-        color: COLORS.text, fontSize: 13, lineHeight: 1.75,
-        whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
-        fontFamily: "'DM Sans',sans-serif",
-      }}>{text}</pre>
+
+      {/* RESULT CONTENT */}
+    <div style={{
+  textAlign: "left",
+  lineHeight: "1.8",
+  fontSize: "15px",
+  background: "#0f172a",
+  padding: "20px",
+  borderRadius: "12px",
+  border: "1px solid rgba(0,255,200,0.2)",
+  boxShadow: "0 0 15px rgba(0,255,200,0.1)",
+  color: "#e2e8f0",
+  fontFamily: "'DM Sans',sans-serif"
+}}>
+  {formatResponse(text)}
+</div>
+
     </div>
   );
 }
@@ -476,7 +706,7 @@ function PlannerPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label="Study Plan" color={COLORS.accent} />}
+      {result && <ResultBlock text={result} label={syllabus} color={COLORS.gold} />}
     </div>
   );
 }
@@ -533,7 +763,7 @@ function QuestionsPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label="Questions" color={COLORS.blue} />}
+      {result && <ResultBlock text={result} label={syllabus}color={COLORS.blue} />}
     </div>
   );
 }
@@ -590,7 +820,7 @@ function SummaryPage({ user, onUpdate }) {
           {loading && <Spinner />}
         </div>
       </Card>
-      {result && <ResultBlock text={result} label="Summary" color={COLORS.gold} />}
+      {result && <ResultBlock text={result} label={syllabus} color={COLORS.gold} />}
     </div>
   );
 }
