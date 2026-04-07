@@ -2515,9 +2515,10 @@ function MobileTopBar({ user, onAvatarClick, onNotifClick, onMsgClick, notifCoun
 function MobileBottomNav({ active, setActive }) {
   const items = [
     { id: "planner", icon: "🗓", label: "Plan" },
-    { id: "questions", icon: "❓", label: "Quiz" },
+    { id: "questions", icon: "❓", label: "Questions" },
+    { id: "summary", icon: "📝", label: "Summary" },
     { id: "connect", icon: "🌐", label: "Feed" },
-    { id: "messages", icon: "💬", label: "Msgs" },
+    { id: "badges", icon: "🏅", label: "Badges" },
     { id: "leaderboard", icon: "🏆", label: "Rank" },
   ];
   return (
