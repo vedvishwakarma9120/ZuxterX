@@ -5,7 +5,6 @@ from datetime import datetime, date, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_mail import Mail, Message
 import requests
 from bson import ObjectId
 
@@ -49,13 +48,7 @@ users   = db["users"]
 posts   = db["connect_posts"]
 tickets = db["support_tickets"]
 
-app.config["MAIL_SERVER"]         = "smtp.gmail.com"
-app.config["MAIL_PORT"]           = 587
-app.config["MAIL_USE_TLS"]        = True
-app.config["MAIL_USERNAME"]       = os.getenv("MAIL_USERNAME")
-app.config["MAIL_PASSWORD"]       = os.getenv("MAIL_PASSWORD")
-app.config["MAIL_DEFAULT_SENDER"] = os.getenv("MAIL_USERNAME")
-mail = Mail(app)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
 otp_store = {}
 
@@ -183,10 +176,7 @@ def send_otp():
     otp = str(random.randint(100000, 999999))
     otp_store[email] = otp
     try:
-        msg = Message(
-            subject="ZuxterX — Your Verification OTP",
-            recipients=[email],
-            html=f"""
+        html_content = f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;
                         background:#0a0c10;color:#e8ecf0;border-radius:16px;
                         padding:36px 32px;border:1px solid #1f2530;">
@@ -200,12 +190,26 @@ def send_otp():
               <p style="font-size:13px;color:#6b7585;">Valid for this session only. Do not share.</p>
               <hr style="border:none;border-top:1px solid #1f2530;margin:28px 0;">
               <p style="font-size:11px;color:#6b7585;text-align:center;">© ZuxterX · AI Study Platform</p>
-            </div>""",
-        )
-        mail.send(msg)
+            </div>"""
+            
+        headers = {
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": "ZuxterX <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "ZuxterX — Your Verification OTP",
+            "html": html_content
+        }
+        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+        if res.status_code >= 400:
+            print("RESEND ERROR:", res.text)
+            return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+            
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": "Failed to send OTP. Check mail config."}), 500
+        return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
     return jsonify({"msg": "OTP sent to your email"})
 
 
@@ -280,10 +284,7 @@ def forgot_password_otp():
     otp = str(random.randint(100000, 999999))
     otp_store[email] = otp
     try:
-        msg = Message(
-            subject="ZuxterX — Password Reset",
-            recipients=[email],
-            html=f"""
+        html_content = f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;
                         background:#0a0c10;color:#e8ecf0;border-radius:16px;
                         padding:36px 32px;border:1px solid #1f2530;">
@@ -297,12 +298,26 @@ def forgot_password_otp():
               <p style="font-size:13px;color:#6b7585;">If you didn't request this, you can ignore it.</p>
               <hr style="border:none;border-top:1px solid #1f2530;margin:28px 0;">
               <p style="font-size:11px;color:#6b7585;text-align:center;">© ZuxterX · AI Study Platform</p>
-            </div>""",
-        )
-        mail.send(msg)
+            </div>"""
+            
+        headers = {
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": "ZuxterX <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "ZuxterX — Password Reset",
+            "html": html_content
+        }
+        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+        if res.status_code >= 400:
+            print("RESEND ERROR:", res.text)
+            return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+            
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": "Failed to send OTP. Check mail config."}), 500
+        return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
     return jsonify({"msg": "Password reset OTP sent to your email"})
 
 

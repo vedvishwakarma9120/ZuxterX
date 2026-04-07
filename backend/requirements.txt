@@ -5,4 +5,3 @@ requests
 gunicorn
 python-dotenv
 flask-jwt-extended
-Flask-Mail
