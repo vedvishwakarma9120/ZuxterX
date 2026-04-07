@@ -48,7 +48,7 @@ users   = db["users"]
 posts   = db["connect_posts"]
 tickets = db["support_tickets"]
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 
 otp_store = {}
 
@@ -193,23 +193,27 @@ def send_otp():
             </div>"""
             
         headers = {
-            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "api-key": BREVO_API_KEY,
             "Content-Type": "application/json"
         }
         payload = {
-            "from": "ZuxterX <onboarding@resend.dev>",
-            "to": [email],
+            "sender": {"name": "ZuxterX", "email": "vedvishwakarma9120@gmail.com"},
+            "to": [{"email": email}],
             "subject": "ZuxterX — Your Verification OTP",
-            "html": html_content
+            "htmlContent": html_content
         }
-        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+        res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
-            print("RESEND ERROR:", res.text)
-            return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+            print("BREVO ERROR:", res.text)
+            try:
+                err_msg = res.json().get("message", res.text)
+            except:
+                err_msg = res.text
+            return jsonify({"msg": f"Brevo Error: {err_msg}"}), 500
             
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+        return jsonify({"msg": f"Exception: {str(e)}"}), 500
     return jsonify({"msg": "OTP sent to your email"})
 
 
@@ -301,23 +305,27 @@ def forgot_password_otp():
             </div>"""
             
         headers = {
-            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "api-key": BREVO_API_KEY,
             "Content-Type": "application/json"
         }
         payload = {
-            "from": "ZuxterX <onboarding@resend.dev>",
-            "to": [email],
+            "sender": {"name": "ZuxterX", "email": "vedvishwakarma9120@gmail.com"},
+            "to": [{"email": email}],
             "subject": "ZuxterX — Password Reset",
-            "html": html_content
+            "htmlContent": html_content
         }
-        res = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+        res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
-            print("RESEND ERROR:", res.text)
-            return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+            print("BREVO ERROR:", res.text)
+            try:
+                err_msg = res.json().get("message", res.text)
+            except:
+                err_msg = res.text
+            return jsonify({"msg": f"Brevo Error: {err_msg}"}), 500
             
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": "Failed to send OTP via Resend API."}), 500
+        return jsonify({"msg": f"Exception: {str(e)}"}), 500
     return jsonify({"msg": "Password reset OTP sent to your email"})
 
 
