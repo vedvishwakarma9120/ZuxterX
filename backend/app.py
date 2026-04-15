@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
+import requests as requests_lib
 from bson import ObjectId
 
 from pymongo import MongoClient
@@ -47,6 +47,7 @@ db      = client["zuxter_ai"]
 users   = db["users"]
 posts   = db["connect_posts"]
 tickets = db["support_tickets"]
+custom_achievements = db["custom_achievements"]
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 
@@ -70,6 +71,8 @@ def serialize_user(u):
         "maxStreak":    u.get("maxStreak", 0),
         "lastActive":   u.get("lastActive", ""),
         "badges":       u.get("badges", []),
+        "customBadges": u.get("customBadges", []),
+        "specialBadges": u.get("specialBadges", []),
         "featuresUsed": u.get("featuresUsed", []),
         "plans":        u.get("plans", 0),
         "qSets":        u.get("qSets", 0),
@@ -81,7 +84,33 @@ def serialize_user(u):
         "following":    u.get("following", []),
         "lastSeen":     u.get("lastSeen", ""),
         "roles":        u.get("roles", []),
+        "bio":          u.get("bio", ""),
+        "messagePrivacy": u.get("messagePrivacy", "Everyone"),
     }
+
+# ── Helper: purge ghost IDs from a user's followers/following ────────────────
+def purge_ghost_ids(user_id: str):
+    """Remove any follower/following IDs that no longer exist in the users collection."""
+    u = users.find_one({"_id": ObjectId(user_id)})
+    if not u:
+        return
+    raw_followers = u.get("followers", [])
+    raw_following = u.get("following", [])
+    # Query only the IDs that actually exist
+    def existing_ids(id_list):
+        valid = []
+        for uid in id_list:
+            try:
+                if users.find_one({"_id": ObjectId(uid)}, {"_id": 1}):
+                    valid.append(uid)
+            except Exception:
+                pass
+        return valid
+    clean_f  = existing_ids(raw_followers)
+    clean_fg = existing_ids(raw_following)
+    if len(clean_f) != len(raw_followers) or len(clean_fg) != len(raw_following):
+        users.update_one({"_id": ObjectId(user_id)},
+                         {"$set": {"followers": clean_f, "following": clean_fg}})
 
 def update_streak_fields(user_doc):
     t         = today_str()
@@ -130,17 +159,26 @@ def get_current_user_id():
         return None
 
 def serialize_post(p):
+    # Attach author's current special badges so UI can display them
+    author_special = []
+    if p.get("authorId"):
+        try:
+            au = users.find_one({"_id": ObjectId(p["authorId"])}, {"specialBadges": 1})
+            author_special = au.get("specialBadges", []) if au else []
+        except Exception:
+            pass
     return {
-        "_id":          str(p["_id"]),
-        "authorId":     p.get("authorId", ""),
-        "authorName":   p.get("authorName", ""),
-        "authorEmail":  p.get("authorEmail", ""),
-        "authorAvatar": p.get("authorAvatar", None),
-        "text":         p.get("text", ""),
-        "image":        p.get("image", None),
-        "likes":        p.get("likes", []),
-        "comments":     p.get("comments", []),
-        "createdAt":    p.get("createdAt", "").isoformat() + "Z" if isinstance(p.get("createdAt"), datetime) else p.get("createdAt", ""),
+        "_id":                str(p["_id"]),
+        "authorId":           p.get("authorId", ""),
+        "authorName":         p.get("authorName", ""),
+        "authorEmail":        p.get("authorEmail", ""),
+        "authorAvatar":       p.get("authorAvatar", None),
+        "authorSpecialBadges": author_special,
+        "text":               p.get("text", ""),
+        "image":              p.get("image", None),
+        "likes":              p.get("likes", []),
+        "comments":           p.get("comments", []),
+        "createdAt":          p.get("createdAt", "").isoformat() + "Z" if isinstance(p.get("createdAt"), datetime) else p.get("createdAt", ""),
     }
 
 def serialize_ticket(t):
@@ -202,7 +240,7 @@ def send_otp():
             "subject": "ZuxterX — Your Verification OTP",
             "htmlContent": html_content
         }
-        res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
+        res = requests_lib.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
             print("BREVO ERROR:", res.text)
             try:
@@ -272,6 +310,10 @@ def login():
         return jsonify({"msg": "Your account has been suspended. Contact support."}), 403
     users.update_one({"_id": u["_id"]}, {"$set": {"lastSeen": datetime.utcnow().isoformat()}})
     token = create_access_token(identity=str(u["_id"]))
+    # Clean up ghost follower/following IDs on every login
+    purge_ghost_ids(str(u["_id"]))
+    # Refetch after purge
+    u = users.find_one({"_id": u["_id"]})
     return jsonify({**serialize_user(u), "token": token})
 
 
@@ -314,7 +356,7 @@ def forgot_password_otp():
             "subject": "ZuxterX — Password Reset",
             "htmlContent": html_content
         }
-        res = requests.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
+        res = requests_lib.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
             print("BREVO ERROR:", res.text)
             try:
@@ -372,6 +414,8 @@ def profile_update():
     fields  = {}
     if "name"     in data: fields["name"]     = str(data["name"]).strip()
     if "password" in data: fields["password"] = generate_password_hash(data["password"])
+    if "bio"      in data: fields["bio"]      = str(data["bio"]).strip()
+    if "messagePrivacy" in data: fields["messagePrivacy"] = str(data["messagePrivacy"]).strip()
     if not fields:
         return jsonify({"msg": "Nothing to update"}), 400
     users.update_one({"_id": ObjectId(user_id)}, {"$set": fields})
@@ -437,6 +481,11 @@ def activity():
 def heartbeat():
     user_id = get_jwt_identity()
     users.update_one({"_id": ObjectId(user_id)}, {"$set": {"lastSeen": datetime.utcnow().isoformat()}})
+    # Opportunistically purge stale follower IDs (runs every 60s in the background)
+    try:
+        purge_ghost_ids(user_id)
+    except Exception:
+        pass
     return jsonify({"ok": True})
 
 
@@ -448,16 +497,17 @@ def heartbeat():
 def leaderboard():
     top = list(users.find(
         {"banned": {"$ne": True}},
-        {"name": 1, "xp": 1, "streak": 1, "badges": 1, "avatar": 1, "email": 1}
+        {"name": 1, "xp": 1, "streak": 1, "badges": 1, "avatar": 1, "email": 1, "specialBadges": 1}
     ).sort("xp", -1).limit(10))
     return jsonify([{
-        "id":     str(u["_id"]),
-        "name":   u.get("name", ""),
-        "email":  u.get("email", ""),
-        "xp":     u.get("xp", 0),
-        "streak": u.get("streak", 0),
-        "badges": u.get("badges", []),
-        "avatar": u.get("avatar", None),
+        "id":            str(u["_id"]),
+        "name":          u.get("name", ""),
+        "email":         u.get("email", ""),
+        "xp":            u.get("xp", 0),
+        "streak":        u.get("streak", 0),
+        "badges":        u.get("badges", []),
+        "avatar":        u.get("avatar", None),
+        "specialBadges": u.get("specialBadges", []),
     } for u in top])
 
 
@@ -485,7 +535,7 @@ Topic:
 {user_input}"""
 
         url      = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={API_KEY}"
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}]})
+        response = requests_lib.post(url, headers={"Content-Type": "application/json"}, json={"contents": [{"parts": [{"text": prompt}]}]})
         result   = response.json()
         output   = result["candidates"][0]["content"]["parts"][0]["text"] if "candidates" in result else result.get("error", {}).get("message", "No response")
         return jsonify({"response": output})
@@ -581,9 +631,11 @@ def add_comment(post_id):
         posts.update_one({"_id": ObjectId(post_id)}, {"$push": {"comments": comment}})
         if p and p.get("authorId") != user_id:
             push_notif(p["authorId"], "comment", u, text[:60], post_id)
+        # Refetch updated post to return fresh comments list
+        p = posts.find_one({"_id": ObjectId(post_id)})
     except Exception:
         return jsonify({"msg": "Invalid post ID"}), 400
-    return jsonify({"msg": "Commented"})
+    return jsonify({"msg": "Commented", "comments": p.get("comments", []) if p else []})
 
 
 @app.route("/connect/follow/<target_id>", methods=["POST"])
@@ -609,6 +661,9 @@ def toggle_follow(target_id):
         users.update_one({"_id": ObjectId(target_id)}, {"$addToSet": {"followers": user_id}})
         push_notif(target_id, "follow", u)
 
+    u = users.find_one({"_id": ObjectId(user_id)})
+    # Purge any ghost IDs accumulated
+    purge_ghost_ids(user_id)
     u = users.find_one({"_id": ObjectId(user_id)})
     return jsonify({"following": u.get("following", []), "followers": u.get("followers", [])})
 
@@ -721,6 +776,34 @@ def my_tickets():
     return jsonify([serialize_ticket(t) for t in my])
 
 
+# Guest (pre-auth) support ticket — no JWT required
+@app.route("/support/guest-ticket", methods=["POST"])
+def submit_guest_ticket():
+    data    = request.json or {}
+    name    = data.get("name", "").strip()
+    email   = data.get("email", "").strip().lower()
+    subject = data.get("subject", "").strip()
+    message = data.get("message", "").strip()
+
+    if not name or not subject or not message:
+        return jsonify({"msg": "Name, subject, and message are required"}), 400
+
+    ticket_doc = {
+        "userId":     None,
+        "userName":   name,
+        "userEmail":  email or "(no email provided)",
+        "subject":    subject,
+        "message":    message,
+        "category":   "auth_issue",
+        "status":     "open",
+        "adminReply": "",
+        "source":     "guest",   # marks as unauthorized / pre-login ticket
+        "createdAt":  datetime.utcnow(),
+    }
+    tickets.insert_one(ticket_doc)
+    return jsonify({"msg": "Your support request has been sent. We'll look into it soon!"})
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ADMIN ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -768,13 +851,21 @@ def admin_online_users():
 def admin_get_tickets():
     _, ok = require_admin()
     if not ok: return jsonify({"msg": "Unauthorized"}), 403
-    all_tickets = list(tickets.find({}).sort("createdAt", -1))
+    all_tickets = list(tickets.find({"source": {"$ne": "guest"}}).sort("createdAt", -1))
     return jsonify([serialize_ticket(t) for t in all_tickets])
+
+
+@app.route("/admin/guest-tickets", methods=["GET"])
+def admin_get_guest_tickets():
+    _, ok = require_admin()
+    if not ok: return jsonify({"msg": "Unauthorized"}), 403
+    guest_tickets = list(tickets.find({"source": "guest"}).sort("createdAt", -1))
+    return jsonify([serialize_ticket(t) for t in guest_tickets])
 
 
 @app.route("/admin/ticket/<ticket_id>/reply", methods=["POST"])
 def admin_reply_ticket(ticket_id):
-    _, ok = require_admin()
+    admin_email, ok = require_admin()
     if not ok: return jsonify({"msg": "Unauthorized"}), 403
     data   = request.json or {}
     reply  = data.get("reply", "").strip()
@@ -782,9 +873,63 @@ def admin_reply_ticket(ticket_id):
     if not reply:
         return jsonify({"msg": "Reply cannot be empty"}), 400
     try:
+        ticket = tickets.find_one({"_id": ObjectId(ticket_id)})
+        if not ticket:
+            return jsonify({"msg": "Ticket not found"}), 404
         tickets.update_one({"_id": ObjectId(ticket_id)}, {"$set": {"adminReply": reply, "status": status}})
     except Exception:
         return jsonify({"msg": "Invalid ticket ID"}), 400
+
+    # ── Send email to user if they provided an email ────────────────────────
+    user_email   = ticket.get("userEmail", "")
+    user_name    = ticket.get("userName", "User")
+    subject      = ticket.get("subject", "Your Support Request")
+    # Always use the Brevo-verified sender. Admin identity shown in the body.
+    VERIFIED_SENDER = "vedvishwakarma9120@gmail.com"
+    replied_by   = admin_email or VERIFIED_SENDER
+
+    if user_email and "@" in user_email and BREVO_API_KEY:
+        try:
+            html_body = f"""
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;
+                        background:#0a0c10;color:#e8ecf0;border-radius:16px;
+                        padding:36px 32px;border:1px solid #1f2530;">
+              <h2 style="color:#00e5a0;font-size:24px;margin-bottom:4px;">ZuxterX Support</h2>
+              <p style="color:#6b7585;font-size:13px;margin-bottom:24px;">Response to your support request</p>
+
+              <p style="font-size:15px;">Hi <strong>{user_name}</strong>,</p>
+              <p style="font-size:14px;color:#aab0bc;margin-top:8px;">
+                We have reviewed your support request: <strong>"{subject}"</strong>
+              </p>
+
+              <div style="background:#111820;border:1px solid #1f2530;border-radius:12px;
+                          padding:18px 20px;margin:24px 0;font-size:14px;line-height:1.75;">
+                {reply}
+              </div>
+
+              <hr style="border:none;border-top:1px solid #1f2530;margin:28px 0;">
+              <p style="font-size:12px;color:#6b7585;text-align:center;">Replied by: {replied_by}</p>
+              <p style="font-size:12px;color:#6b7585;text-align:center;"><strong>Do not reply to this email.</strong></p>
+              <p style="font-size:11px;color:#6b7585;text-align:center;margin-top:6px;">&copy; ZuxterX &middot; AI Study Platform</p>
+            </div>"""
+
+            brevo_res = requests_lib.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+                json={
+                    "sender":      {"name": "ZuxterX Support", "email": VERIFIED_SENDER},
+                    "to":          [{"email": user_email, "name": user_name}],
+                    "subject":     f"Re: {subject} \u2014 ZuxterX Support",
+                    "htmlContent": html_body,
+                }
+            )
+            if brevo_res.status_code >= 400:
+                print(f"[BREVO ERROR] status={brevo_res.status_code} body={brevo_res.text}")
+            else:
+                print(f"[EMAIL OK] Reply sent to {user_email}")
+        except Exception as e:
+            print(f"[EMAIL ERROR] Could not send reply email: {e}")
+
     return jsonify({"msg": "Reply sent"})
 
 
@@ -800,6 +945,214 @@ def admin_delete_ticket(ticket_id):
     if r.deleted_count == 0:
         return jsonify({"msg": "Ticket not found"}), 404
     return jsonify({"msg": "Ticket deleted"})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CUSTOM ACHIEVEMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def serialize_achievement(a):
+    expires_at = ""
+    duration   = int(a.get("durationDays", 0))
+    created_dt = a.get("createdAt")
+    if duration > 0 and isinstance(created_dt, datetime):
+        from datetime import timedelta
+        expires_at = (created_dt + timedelta(days=duration)).isoformat() + "Z"
+    return {
+        "id":           str(a["_id"]),
+        "label":        a.get("label", ""),
+        "desc":         a.get("desc", ""),
+        "icon":         a.get("icon", "🏆"),
+        "image":        a.get("image", ""),
+        "goals":        a.get("goals", {}),
+        "type":         a.get("type", "normal"),
+        "priority":     int(a.get("priority", 0)),   # higher = more important
+        "durationDays": duration,
+        "expiresAt":    expires_at,
+        "createdAt":    created_dt.isoformat() + "Z" if isinstance(created_dt, datetime) else a.get("createdAt", ""),
+    }
+
+# Public – list active, non-expired achievements
+@app.route("/achievements", methods=["GET"])
+def get_custom_achievements():
+    now   = datetime.utcnow()
+    items = list(custom_achievements.find({}).sort("createdAt", -1))
+    # Filter out expired items
+    active = []
+    for a in items:
+        dur = int(a.get("durationDays", 0))
+        if dur > 0:
+            from datetime import timedelta
+            exp = a.get("createdAt") + timedelta(days=dur) if isinstance(a.get("createdAt"), datetime) else None
+            if exp and now > exp:
+                continue
+        active.append(a)
+    return jsonify([serialize_achievement(a) for a in active])
+
+# Admin – list all
+@app.route("/admin/achievements", methods=["GET"])
+def admin_list_achievements():
+    _, ok = require_admin()
+    if not ok: return jsonify({"msg": "Unauthorized"}), 403
+    items = list(custom_achievements.find({}).sort("createdAt", -1))
+    return jsonify([serialize_achievement(a) for a in items])
+
+# Admin – create new achievement with optional goals, type, duration, and priority
+@app.route("/admin/achievements", methods=["POST"])
+def admin_create_achievement():
+    _, ok = require_admin()
+    if not ok: return jsonify({"msg": "Unauthorized"}), 403
+    data         = request.json or {}
+    label        = data.get("label", "").strip()
+    desc         = data.get("desc", "").strip()
+    icon         = data.get("icon", "🏆").strip() or "🏆"
+    image        = data.get("image", "")
+    ach_type     = data.get("type", "normal")   # "normal" | "special"
+    duration_days = int(data.get("durationDays", 0) or 0)
+    priority     = int(data.get("priority", 0) or 0)  # higher = shown first in profile card
+    # Goals: only store non-zero values
+    raw_goals = data.get("goals", {})
+    goals = {k: int(v) for k, v in raw_goals.items() if str(v).strip().isdigit() and int(v) > 0}
+    if not label:
+        return jsonify({"msg": "Achievement name is required"}), 400
+    result = custom_achievements.insert_one({
+        "label":        label,
+        "desc":         desc,
+        "icon":         icon,
+        "image":        image,
+        "goals":        goals,
+        "type":         ach_type,
+        "priority":     priority,
+        "durationDays": duration_days,
+        "createdAt":    datetime.utcnow(),
+    })
+    return jsonify({"msg": "Achievement created", "id": str(result.inserted_id)}), 201
+
+# Admin – delete (does NOT remove from users who already earned it)
+@app.route("/admin/achievements/<ach_id>", methods=["DELETE"])
+def admin_delete_achievement(ach_id):
+    _, ok = require_admin()
+    if not ok: return jsonify({"msg": "Unauthorized"}), 403
+    try:
+        custom_achievements.delete_one({"_id": ObjectId(ach_id)})
+        # NOTE: intentionally does NOT touch users.customBadges – earned snapshots persist
+    except Exception:
+        return jsonify({"msg": "Invalid ID"}), 400
+    return jsonify({"msg": "Achievement deleted"})
+
+
+# User – check eligibility for all active achievements + auto-award
+@app.route("/achievements/check", methods=["POST"])
+@jwt_required()
+def check_achievements():
+    user_id = get_jwt_identity()
+    user = users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        return jsonify({"msg": "User not found"}), 404
+
+    active_achs   = list(custom_achievements.find({}))
+    earned_ids    = {b["id"] for b in user.get("customBadges", [])}
+    # baselines: { ach_id: { xp, streak, plans, qSets, summaries, followers } }
+    baselines     = user.get("achievementBaselines", {})
+    newly_awarded = []
+    baseline_updates = {}  # ach_id -> snapshot to save
+
+    # Current raw stats
+    cur = {
+        "xp":        user.get("xp", 0),
+        "streak":    user.get("streak", 0),
+        "plans":     user.get("plans", 0),
+        "qSets":     user.get("qSets", 0),
+        "summaries": user.get("summaries", 0),
+        "followers": len(user.get("followers", [])),
+    }
+
+    from datetime import timedelta
+    now = datetime.utcnow()
+
+    for ach in active_achs:
+        ach_id = str(ach["_id"])
+        if ach_id in earned_ids:
+            continue  # already earned – skip
+
+        # ── Skip expired achievements ──
+        dur = int(ach.get("durationDays", 0))
+        if dur > 0 and isinstance(ach.get("createdAt"), datetime):
+            exp = ach["createdAt"] + timedelta(days=dur)
+            if now > exp:
+                continue  # expired – cannot earn anymore
+
+        goals = ach.get("goals", {})
+        if not goals:
+            continue  # no goals = manual award only
+
+        # ── Capture baseline if this is the first time the user sees this achievement ──
+        if ach_id not in baselines:
+            baseline_updates[ach_id] = dict(cur)   # snapshot right now
+            baselines[ach_id] = dict(cur)           # use in this request too
+
+        base = baselines[ach_id]
+
+        # ── Delta progress (only counts activity AFTER achievement was created) ──
+        delta = {k: max(0, cur[k] - base.get(k, 0)) for k in cur}
+
+        # ── Check all goals against delta ──
+        qualifies = True
+        if goals.get("xp",        0) > 0 and delta["xp"]        < goals["xp"]:        qualifies = False
+        if goals.get("streak",    0) > 0 and delta["streak"]    < goals["streak"]:    qualifies = False
+        if goals.get("plans",     0) > 0 and delta["plans"]     < goals["plans"]:     qualifies = False
+        if goals.get("qSets",     0) > 0 and delta["qSets"]     < goals["qSets"]:     qualifies = False
+        if goals.get("summaries", 0) > 0 and delta["summaries"] < goals["summaries"]: qualifies = False
+        if goals.get("followers", 0) > 0 and delta["followers"] < goals["followers"]: qualifies = False
+
+        if qualifies:
+            snapshot = {
+                "id":       ach_id,
+                "label":    ach.get("label", ""),
+                "desc":     ach.get("desc", ""),
+                "icon":     ach.get("icon", "🏆"),
+                "image":    ach.get("image", ""),
+                "type":     ach.get("type", "normal"),
+                "priority": int(ach.get("priority", 0)),
+                "earnedAt": datetime.utcnow().isoformat() + "Z",
+            }
+            push_fields = {"customBadges": snapshot}
+            if ach.get("type") == "special":
+                push_fields["specialBadges"] = snapshot
+            users.update_one(
+                {"_id": ObjectId(user_id), "customBadges.id": {"$ne": ach_id}},
+                {"$push": push_fields}
+            )
+            newly_awarded.append(snapshot)
+            earned_ids.add(ach_id)
+
+    # ── Persist any new baselines in one DB write ──
+    if baseline_updates:
+        set_fields = {f"achievementBaselines.{k}": v for k, v in baseline_updates.items()}
+        users.update_one({"_id": ObjectId(user_id)}, {"$set": set_fields})
+
+    # ── Re-fetch to get definitive state ──
+    user = users.find_one({"_id": ObjectId(user_id)})
+    earned_ids = {b["id"] for b in user.get("customBadges", [])}
+    baselines  = user.get("achievementBaselines", {})
+
+    # ── Build active list with earned flag + per-achievement delta progress ──
+    result_active = []
+    for ach in active_achs:
+        ach_id   = str(ach["_id"])
+        base     = baselines.get(ach_id, {k: cur[k] for k in cur})  # fallback = cur (earned already)
+        delta    = {k: max(0, cur[k] - base.get(k, 0)) for k in cur}
+        serialized          = serialize_achievement(ach)
+        serialized["earned"]  = ach_id in earned_ids
+        serialized["progress"] = delta   # what the user has earned AFTER this achievement started
+        result_active.append(serialized)
+
+    return jsonify({
+        "active":        result_active,
+        "customBadges":  user.get("customBadges", []),
+        "newly_awarded": newly_awarded,
+        "stats":         cur,            # raw stats (for display only)
+    })
 
 
 # Bug 6 fix: admin can delete a specific comment from a post by index
@@ -966,6 +1319,10 @@ def admin_delete_user(user_id):
         return jsonify({"msg": "Invalid ID"}), 400
     if r.deleted_count == 0:
         return jsonify({"msg": "User not found"}), 404
+        
+    # Cascade delete from followers and following lists
+    users.update_many({}, {"$pull": {"followers": user_id, "following": user_id}})
+    
     return jsonify({"msg": "User deleted permanently"})
 
 
@@ -992,6 +1349,9 @@ def serialize_msg(m):
         "fromName":   m.get("fromName", ""),
         "fromAvatar": m.get("fromAvatar", None),
         "text":       m.get("text", ""),
+        "type":       m.get("type", "text"),
+        "postId":     m.get("postId", ""),
+        "postPreview": m.get("postPreview", ""),
         "seen":       m.get("seen", False),
         "createdAt":  m.get("createdAt", "").isoformat() + "Z" if isinstance(m.get("createdAt"), datetime) else m.get("createdAt", ""),
     }
@@ -1044,12 +1404,25 @@ def send_message():
         return jsonify({"msg": "Invalid toId"}), 400
     if not target:
         return jsonify({"msg": "Recipient not found"}), 404
+
+    # Privacy check
+    privacy = target.get("messagePrivacy", "Everyone")
+    if privacy == "No One":
+        return jsonify({"msg": "This user is not accepting messages."}), 403
+    if privacy == "Followers Only":
+        if user_id not in target.get("followers", []):
+            return jsonify({"msg": "This user is not accepting messages."}), 403
+
+    msg_type = data.get("type", "text")
     msg_doc = {
         "fromId":     user_id,
         "toId":       to_id,
         "fromName":   u.get("name", ""),
         "fromAvatar": u.get("avatar", None),
         "text":       text,
+        "type":       msg_type,
+        "postId":     data.get("postId", ""),
+        "postPreview": data.get("postPreview", ""),
         "seen":       False,
         "createdAt":  datetime.utcnow(),
     }
@@ -1068,7 +1441,8 @@ def get_conversation(other_id):
             "$or": [
                 {"fromId": user_id, "toId": other_id},
                 {"fromId": other_id, "toId": user_id},
-            ]
+            ],
+            "deletedFor": {"$nin": [user_id]},  # hide messages deleted by this user
         }).sort("createdAt", 1).limit(100))
     except Exception:
         return jsonify([])
@@ -1079,13 +1453,64 @@ def get_conversation(other_id):
     )
     return jsonify([serialize_msg(m) for m in msgs])
 
+
+# DELETE a conversation from my side only (hide all messages in this thread)
+@app.route("/msg/conversation/<other_id>", methods=["DELETE"])
+@jwt_required()
+def delete_conversation(other_id):
+    user_id = get_jwt_identity()
+    messages_col.update_many(
+        {"$or": [
+            {"fromId": user_id, "toId": other_id},
+            {"fromId": other_id, "toId": user_id},
+        ]},
+        {"$addToSet": {"deletedFor": user_id}}
+    )
+    return jsonify({"msg": "Chat deleted from your side"})
+
+
+# DELETE a single message from my side only
+@app.route("/msg/delete/<msg_id>", methods=["DELETE"])
+@jwt_required()
+def delete_message(msg_id):
+    user_id = get_jwt_identity()
+    try:
+        messages_col.update_one(
+            {"_id": ObjectId(msg_id)},
+            {"$addToSet": {"deletedFor": user_id}}
+        )
+    except Exception:
+        return jsonify({"msg": "Invalid ID"}), 400
+    return jsonify({"msg": "Message deleted from your side"})
+
+
+# UNSEND a message — removes it for EVERYONE (sender only)
+@app.route("/msg/unsend/<msg_id>", methods=["DELETE"])
+@jwt_required()
+def unsend_message(msg_id):
+    user_id = get_jwt_identity()
+    try:
+        m = messages_col.find_one({"_id": ObjectId(msg_id)})
+        if not m:
+            return jsonify({"msg": "Message not found"}), 404
+        if m.get("fromId") != user_id:
+            return jsonify({"msg": "You can only unsend your own messages"}), 403
+        messages_col.delete_one({"_id": ObjectId(msg_id)})
+    except Exception:
+        return jsonify({"msg": "Invalid ID"}), 400
+    return jsonify({"msg": "Message unsent"})
+
 # Get inbox — list of unique conversations
 @app.route("/msg/inbox", methods=["GET"])
 @jwt_required()
 def get_inbox():
     user_id = get_jwt_identity()
     pipeline = [
-        {"$match": {"$or": [{"fromId": user_id}, {"toId": user_id}]}},
+        # Only messages involving this user AND not deleted by them
+        {"$match": {
+            "$or": [{"fromId": user_id}, {"toId": user_id}],
+            "deletedFor": {"$nin": [user_id]}   # ← exclude messages deleted by me
+        }},
         {"$sort": {"createdAt": -1}},
         {"$addFields": {
             "threadKey": {
@@ -1112,7 +1537,7 @@ def get_inbox():
             continue
         if not other:
             continue
-        unread = messages_col.count_documents({"fromId": other_id, "toId": user_id, "seen": False})
+        unread = messages_col.count_documents({"fromId": other_id, "toId": user_id, "seen": False, "deletedFor": {"$nin": [user_id]}})
         result.append({
             "otherId":     str(other["_id"]),
             "otherName":   other.get("name", ""),
@@ -1123,6 +1548,7 @@ def get_inbox():
             "isMine":      lm["fromId"] == user_id,
         })
     return jsonify(result)
+
 
 # Unread message count
 @app.route("/msg/unread-count", methods=["GET"])

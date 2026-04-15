@@ -1,14 +1,11 @@
 import "./App.css";
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import html2pdf from "html2pdf.js/dist/html2pdf.bundle";
 
 const BASE_URL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000"
     : "https://zuxter-backend.onrender.com";
-
-import carBg from "./assets/car.jpg";
-import Spline from '@splinetool/react-spline';
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Outfit:wght@300;400;500;600;700&display=swap');`;
 
@@ -41,6 +38,7 @@ const css = `
   @keyframes badgePop{0%{transform:scale(0) rotate(-15deg)}70%{transform:scale(1.2) rotate(4deg)}100%{transform:scale(1) rotate(0deg)}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
   @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+  @keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
   @keyframes neonPulse{0%,100%{box-shadow:0 0 10px ${COLORS.accentDim};}50%{box-shadow:0 0 20px ${COLORS.accent}44, 0 0 30px ${COLORS.accent}22;}}
   img{max-width:100%;height:auto}
   textarea,input,select{font-family:'Outfit',sans-serif}
@@ -98,6 +96,40 @@ const css = `
 `;
 
 function clearSession() { window._authToken = null; window._adminToken = null; }
+
+// ── Special Achievement badge pill shown under usernames everywhere ───────────
+function SpecialBadgePill({ badge }) {
+  const [tip, setTip] = React.useState(false);
+  return (
+    <div
+      style={{ position: "relative", display: "inline-flex", alignItems: "center", cursor: "default" }}
+      onMouseEnter={() => setTip(true)}
+      onMouseLeave={() => setTip(false)}
+    >
+      {badge.image
+        ? <img src={badge.image} alt={badge.label} style={{ width: 20, height: 20, borderRadius: 5, objectFit: "cover", border: "1.5px solid #f5c518aa" }} />
+        : <span style={{ fontSize: 16, lineHeight: 1 }}>{badge.icon || "🏆"}</span>
+      }
+      {tip && (
+        <div style={{ position: "absolute", bottom: "125%", left: "50%", transform: "translateX(-50%)", background: "#0d0f14", border: "1px solid #f5c518", borderRadius: 7, padding: "4px 10px", fontSize: 11, color: "#f5c518", whiteSpace: "nowrap", zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.6)", fontWeight: 600, pointerEvents: "none" }}>
+          {badge.label}
+          <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", borderWidth: "5px 5px 0", borderStyle: "solid", borderColor: "#f5c518 transparent transparent" }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Renders all special badges for a user (row of pills) ─────────────────────
+function SpecialBadgeRow({ badges, style }) {
+  const list = (badges || []).filter(b => b && (b.image || b.icon));
+  if (!list.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", ...style }}>
+      {list.map((b, i) => <SpecialBadgePill key={b.id || i} badge={b} />)}
+    </div>
+  );
+}
 
 const ALL_BADGES = [
   { id: "first_plan", icon: "🎯", label: "First Plan", desc: "Generated your first study plan" },
@@ -200,8 +232,15 @@ function AuthScreen({ onLogin, onAdminLogin }) {
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  // support form state
+  const [suppName, setSuppName] = useState("");
+  const [suppEmail, setSuppEmail] = useState("");
+  const [suppSubject, setSuppSubject] = useState("");
+  const [suppMsg, setSuppMsg] = useState("");
+  const [suppSent, setSuppSent] = useState(false);
 
-  function switchMode(m) { setMode(m); setErr(""); setInfo(""); setSignupStep("form"); setOtp(""); }
+  function switchMode(m) { setMode(m); setErr(""); setInfo(""); setSignupStep("form"); setOtp(""); setShowPass(false); setSuppSent(false); }
 
   async function doLogin() {
     setErr(""); setInfo("");
@@ -291,9 +330,28 @@ function AuthScreen({ onLogin, onAdminLogin }) {
     setLoading(false);
   }
 
+  async function doSupportTicket() {
+    setErr(""); setInfo("");
+    if (!suppName.trim()) { setErr("Name is required."); return; }
+    if (!suppEmail.trim()) { setErr("Email is required."); return; }
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(suppEmail.trim())) { setErr("Please enter a valid email address."); return; }
+    if (!suppSubject.trim()) { setErr("Subject is required."); return; }
+    if (!suppMsg.trim()) { setErr("Please describe your issue."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/support/guest-ticket`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: suppName, email: suppEmail, subject: suppSubject, message: suppMsg }) });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.msg || "Error"); setLoading(false); return; }
+      setSuppSent(true);
+    } catch { setErr("Server error"); }
+    setLoading(false);
+  }
+
   function submit() {
     if (mode === "admin") { doAdminLogin(); return; }
     if (mode === "login") { doLogin(); return; }
+    if (mode === "support") { doSupportTicket(); return; }
     if (mode === "forgot") {
       if (signupStep === "form") { doSendForgotOtp(); return; }
       doResetPassword(); return;
@@ -336,100 +394,209 @@ function AuthScreen({ onLogin, onAdminLogin }) {
   }
 
   return (
-    <div className="auth-container" style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(5,8,15,0.7)", animation: "fadeUp 0.3s ease" }}>
-      {/* CENTRALLY ALIGNED FORM */}
-      <div className="auth-right">
-        <div style={{ width: "100%", maxWidth: "420px", animation: "fadeUp .5s ease both" }}>
-          <div style={{ textAlign: "center", marginBottom: 40 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 64, height: 64, borderRadius: 20, background: `linear-gradient(135deg,${accentColor}22,${accentColor}08)`, border: `1px solid ${accentColor}44`, fontSize: 30, marginBottom: 16 }}>
-              {mode === "admin" ? "🛡️" : "📚"}
-            </div>
-            <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 44, fontWeight: 800, letterSpacing: "-1.5px", lineHeight: 1, marginBottom: 12, color: "#fff", textShadow: `0 0 40px ${accentColor}44` }}>
-              Zuxter<span style={{ color: accentColor, textShadow: `0 0 20px ${accentColor}` }}>X</span>
+    <div className="bg-black/60 backdrop-blur-md text-white selection:bg-white/30 selection:text-white font-sans tracking-wide" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyItems: "center" }}>
+      
+      <button onClick={() => setShowForm(false)} className="absolute top-6 right-8 bg-transparent border-none text-gray-400 cursor-pointer text-3xl z-50 transition-all hover:text-white hover:scale-110">✕</button>
+
+      {/* Login Card Container */}
+      <main className="relative z-10 w-full max-w-md px-6 py-12 mx-auto mt-6 animate-[slideIn_0.5s_ease-out]">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-[20px] p-8 md:p-10 shadow-2xl overflow-hidden relative">
+          
+          {/* Header Section */}
+          <div className="text-center mb-8">
+            <h1 className="text-[28px] font-semibold text-white tracking-tight leading-tight">
+               {mode === "admin" ? "Admin Access" : mode === "signup" ? "Create Account" : mode === "forgot" ? "Reset Password" : mode === "support" ? "Get Support" : "Welcome back"}
             </h1>
-            <p style={{ color: COLORS.muted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
-              {mode === "admin" ? "⚡ Admin Control Panel" : "AI-Powered Study Platform"}
+            <p className="text-gray-400 mt-2 font-medium">
+               {mode === "admin" ? "Enter admin credentials" : mode === "signup" ? "Join ZuxterX today" : mode === "forgot" ? "We'll send you an OTP" : mode === "support" ? "Tell us what went wrong" : "Sign in to continue"}
             </p>
-            {mode !== "admin" && <p style={{ color: "rgba(224,247,250,0.32)", fontSize: 12, fontFamily: "'DM Sans',sans-serif", fontStyle: "italic" }}>Study smarter. Streak longer. Rise higher.</p>}
+          </div>
+          
+          {/* Toggles */}
+          <div className="flex gap-2 mb-6 bg-white/5 rounded-xl p-1.5 border border-white/10">
+            {["login", "signup", "admin"].map(m => (
+              <button key={m} onClick={() => switchMode(m)} className={`flex-1 py-2 rounded-lg text-sm font-bold tracking-wide transition-all border outline-none cursor-pointer ${mode === m ? 'bg-white text-black border-white shadow-sm' : 'bg-transparent text-gray-400 border-transparent hover:text-white'}`}>
+                {m === "login" ? "Sign In" : m === "signup" ? "Sign Up" : "Admin"}
+              </button>
+            ))}
           </div>
 
-          <div style={{ position: "relative", background: "rgba(5,8,15,0.45)", border: `1px solid ${mode === "admin" ? COLORS.admin + "66" : COLORS.accent + "55"}`, borderRadius: 24, padding: "34px", backdropFilter: "blur(40px) saturate(150%)", boxShadow: `0 24px 60px rgba(0,0,0,0.8), inset 0 0 20px ${mode === "admin" ? COLORS.admin + "22" : COLORS.accent + "22"}` }}>
-            <button onClick={() => setShowForm(false)} style={{ position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)", background: "transparent", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 22, zIndex: 10, transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.transform = "translateX(-50%) scale(1.1)"; }} onMouseOut={e => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; e.currentTarget.style.transform = "translateX(-50%) scale(1)"; }}>✕</button>
-            <div style={{ display: "flex", gap: 6, marginBottom: 32, background: "rgba(0,0,0,0.4)", borderRadius: 14, padding: 6, border: `1px solid ${COLORS.border}` }}>
-              {["login", "signup", "admin"].map(m => (
-                <button key={m} onClick={() => switchMode(m)} style={{
-                  flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer",
-                  fontFamily: "'Outfit',sans-serif", fontWeight: 700, fontSize: 13, letterSpacing: "0.03em", transition: "all 0.3s",
-                  background: mode === m ? (m === "admin" ? COLORS.admin + "33" : COLORS.accent + "33") : "transparent",
-                  color: mode === m ? (m === "admin" ? COLORS.admin : COLORS.accent) : COLORS.muted,
-                  boxShadow: mode === m ? `inset 0 0 10px ${m === "admin" ? COLORS.admin : COLORS.accent}22` : "none",
-                  border: `1px solid ${mode === m ? (m === "admin" ? COLORS.admin + "66" : COLORS.accent + "66") : "transparent"}`
-                }}>
-                  {m === "login" ? "Sign In" : m === "signup" ? "Sign Up" : "Admin"}
-                </button>
-              ))}
+          {/* Need Help link */}
+          {mode !== "support" && (
+            <div style={{ textAlign: "center", marginBottom: 2 }}>
+              <button type="button" onClick={() => switchMode("support")}
+                className="text-xs text-gray-500 hover:text-white transition-colors hover:underline bg-transparent border-none cursor-pointer font-semibold">
+                🆘 Can't sign in? Get help
+              </button>
             </div>
+          )}
 
-            {(mode === "signup" || mode === "forgot") && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-                {["Details", "Verify OTP"].map((step, i) => {
-                  const cur = signupStep === "form" ? 1 : 2;
-                  const active = i + 1 === cur; const done = i + 1 < cur;
-                  return (
-                    <div key={step} style={{ display: "flex", alignItems: "center", gap: 8, flex: i < 1 ? 1 : "unset" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", background: done ? COLORS.accent : active ? COLORS.accent + "22" : COLORS.surfaceAlt, border: `1.5px solid ${done || active ? COLORS.accent : COLORS.border}`, color: done ? "#000" : active ? COLORS.accent : COLORS.muted }}>{done ? "✓" : i + 1}</div>
-                        <span style={{ fontSize: 12, color: active ? COLORS.accent : COLORS.muted, fontWeight: active ? 600 : 400 }}>{step}</span>
+          {(mode === "signup" || mode === "forgot") && (
+            <div className="flex items-center gap-2 mb-5">
+              {["Details", "Verify OTP"].map((step, i) => {
+                const cur = signupStep === "form" ? 1 : 2;
+                const active = i + 1 === cur; const done = i + 1 < cur;
+                return (
+                  <div key={step} className={`flex items-center gap-2 ${i < 1 ? 'flex-1' : ''}`}>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center border-2 ${done ? 'bg-white border-white text-black' : active ? 'bg-white/10 border-white text-white' : 'bg-transparent border-white/20 text-gray-500'}`}>
+                        {done ? "✓" : i + 1}
                       </div>
-                      {i < 1 && <div style={{ flex: 1, height: 1, background: done ? COLORS.accent + "44" : COLORS.border, margin: "0 4px" }} />}
+                      <span className={`text-xs ${active ? 'text-white font-semibold' : 'text-gray-500'}`}>{step}</span>
                     </div>
-                  );
-                })}
+                    {i < 1 && <div className={`flex-1 h-px mx-1 ${done ? 'bg-white/40' : 'bg-white/10'}`} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Login Form */}
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            
+            {mode === "signup" && signupStep === "form" && (
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Full Name</label>
+              <div className="relative group">
+                <input 
+                  value={name} onChange={e => setName(e.target.value)}
+                  className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" 
+                  placeholder="John Doe" 
+                />
               </div>
+            </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {mode === "signup" && signupStep === "form" && (
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={inputStyle} onFocus={iFocus} onBlur={iBlur} />
-              )}
-              {(mode === "login" || mode === "admin" || signupStep === "form") && (
-                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email" style={inputStyle} onFocus={iFocus} onBlur={iBlur}
-                  onKeyDown={e => e.key === "Enter" && submit()} />
-              )}
-              {(mode === "login" || mode === "admin" || (mode === "signup" && signupStep === "form") || (mode === "forgot" && signupStep === "otp")) && (
-                <input value={pass} onChange={e => setPass(e.target.value)} placeholder={mode === "forgot" ? "New Password" : "Password"} type="password" style={inputStyle} onFocus={iFocus} onBlur={iBlur}
-                  onKeyDown={e => e.key === "Enter" && submit()} />
-              )}
-              {(mode === "signup" || mode === "forgot") && signupStep === "otp" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <p style={{ fontSize: 13, color: COLORS.muted }}>Enter the 6-digit code sent to <span style={{ color: COLORS.accent }}>{email}</span></p>
-                  <input value={otp} onChange={e => setOtp(e.target.value)} placeholder="000000" maxLength={6}
-                    style={{ ...inputStyle, fontSize: 24, letterSpacing: "0.4em", textAlign: "center", fontFamily: "'Syne',sans-serif", fontWeight: 700 }}
-                    onFocus={iFocus} onBlur={iBlur} onKeyDown={e => e.key === "Enter" && submit()} />
+            {(mode === "login" || mode === "admin" || signupStep === "form") && (
+            <div className="space-y-1.5 text-left">
+              <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Email Address</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
                 </div>
-              )}
-
-              {mode === "login" && (
-                <div style={{ textAlign: "right", marginTop: -6 }}>
-                  <button onClick={() => switchMode("forgot")} style={{ background: "transparent", border: "none", color: COLORS.muted, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>Forgot Password?</button>
-                </div>
-              )}
-
-              {err && <div style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 10, padding: "10px 14px", color: COLORS.danger, fontSize: 13 }}>⚠ {err}</div>}
-              {info && <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}33`, borderRadius: 10, padding: "10px 14px", color: COLORS.accent, fontSize: 13 }}>✓ {info}</div>}
-
-              <button onClick={submit} disabled={loading}
-                style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Outfit',sans-serif", fontWeight: 800, fontSize: 15, transition: "all 0.2s", opacity: loading ? .7 : 1, background: `linear-gradient(135deg,${accentColor},${accentColor}cc)`, color: "#000", boxShadow: `0 4px 20px ${accentColor}55`, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 4 }}>
-                {loading ? <><BtnSpinner /><span>Please wait…</span></> : mode === "login" ? "Sign In  ➔" : mode === "signup" ? (signupStep === "form" ? "Send OTP  ➔" : "Create Account  ➔") : mode === "forgot" ? (signupStep === "form" ? "Send Reset OTP  ➔" : "Reset Password  ➔") : "Access Admin  ➔"}
-              </button>
-
-              {(mode === "signup" || mode === "forgot") && signupStep === "otp" && (
-                <button onClick={() => { setSignupStep("form"); setOtp(""); setErr(""); setInfo(""); }} style={{ background: "transparent", border: "none", color: COLORS.muted, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>← Change email or resend OTP</button>
-              )}
+                <input 
+                  value={email} onChange={e => setEmail(e.target.value)}
+                  className="w-full h-[52px] pl-12 pr-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" 
+                  placeholder="name@company.com" 
+                  type="email"
+                />
+              </div>
             </div>
-          </div>
+            )}
+
+            {(mode === "login" || mode === "admin" || (mode === "signup" && signupStep === "form") || (mode === "forgot" && signupStep === "otp")) && (
+            <div className="space-y-1.5 text-left">
+              <div className="flex justify-between items-center px-1">
+                <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400">Password</label>
+                {mode === "login" && (
+                  <button type="button" onClick={() => switchMode("forgot")} className="text-xs font-semibold text-gray-400 hover:text-white transition-colors hover:underline bg-transparent border-none cursor-pointer">Forgot?</button>
+                )}
+              </div>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <input 
+                  value={pass} onChange={e => setPass(e.target.value)}
+                  className="w-full h-[52px] pl-12 pr-12 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" 
+                  placeholder={mode === "forgot" ? "New Password" : "••••••••"} 
+                  type={showPass ? "text" : "password"}
+                />
+                <span 
+                  className="absolute text-gray-500 hover:text-white cursor-pointer select-none flex items-center justify-center transition-colors"
+                  style={{ right: "16px", top: "50%", transform: "translateY(-50%)", width: "32px", height: "32px", padding: 0, margin: 0, zIndex: 10 }}
+                  onClick={() => setShowPass(!showPass)}
+                  title="Toggle Password Visibility"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    {showPass ? (
+                      <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                    ) : (
+                      <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+                    )}
+                  </svg>
+                </span>
+              </div>
+            </div>
+            )}
+
+            {(mode === "signup" || mode === "forgot") && signupStep === "otp" && (
+            <div className="space-y-1.5 mt-2">
+              <p className="text-xs text-gray-500">Enter the 6-digit code sent to <span className="text-white font-semibold">{email}</span></p>
+              <input value={otp} onChange={e => setOtp(e.target.value)} placeholder="000000" maxLength={6}
+                className="w-full h-[64px] bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500 text-2xl tracking-[0.5em] text-center font-bold font-sans" />
+            </div>
+            )}
+
+            {err && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm flex items-start text-left gap-2 mt-2 font-medium"><svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>{err}</div>}
+            {info && <div className="bg-white/10 border border-white/30 rounded-lg p-3 text-white text-sm flex items-start text-left gap-2 mt-2 font-medium"><svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>{info}</div>}
+
+            {/* Support mode — render inline form, not the standard inputs */}
+            {mode === "support" && (
+              suppSent ? (
+                <div style={{ textAlign: "center", padding: "24px 0" }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                  <div className="text-white font-bold text-lg mb-2">Request Submitted!</div>
+                  <div className="text-gray-400 text-sm mb-6">Our admin team will review your issue soon. Try signing in again or contact us directly.</div>
+                  <button type="button" onClick={() => switchMode("login")} className="text-xs text-gray-400 hover:text-white transition-colors hover:underline bg-transparent border-none cursor-pointer font-semibold">← Back to Sign In</button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Your Name *</label>
+                    <input value={suppName} onChange={e => setSuppName(e.target.value)} className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" placeholder="John Doe" />
+                  </div>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Email *</label>
+                    <input value={suppEmail} onChange={e => setSuppEmail(e.target.value)} type="email" required className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" placeholder="name@example.com" />
+                  </div>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Subject *</label>
+                    <input value={suppSubject} onChange={e => setSuppSubject(e.target.value)} className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" placeholder="e.g. Can't log in to my account" />
+                  </div>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Describe your issue *</label>
+                    <textarea value={suppMsg} onChange={e => setSuppMsg(e.target.value)} rows={4} className="w-full px-4 py-3 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500 resize-none" placeholder="Please describe what happened and what you expected..." />
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className={`mt-2 w-full h-[52px] rounded-xl bg-white text-black text-[15px] font-bold tracking-wide hover:bg-gray-200 border-none transition-all duration-300 shadow flex items-center justify-center gap-2 ${loading ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'}`}>
+                    {loading ? <BtnSpinner /> : null}{loading ? "Sending..." : "🆘 Send Support Request"}
+                  </button>
+                  <button type="button" onClick={() => switchMode("login")} className="w-full bg-transparent border-none text-gray-500 text-xs font-semibold cursor-pointer hover:text-white hover:underline transition-colors mt-1">← Back to Sign In</button>
+                </div>
+              )
+            )}
+
+            {/* Primary Action — only show for non-support modes */}
+            {mode !== "support" && (
+              <button 
+                type="submit" disabled={loading}
+                className={`mt-4 w-full h-[52px] rounded-xl bg-white text-black text-[15px] font-bold tracking-wide hover:bg-gray-200 border-none transition-all duration-300 shadow flex items-center justify-center gap-2 ${loading ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'}`}
+              >
+                {loading ? <BtnSpinner /> : null}
+                {loading ? "Please wait..." : mode === "login" ? "Sign In" : mode === "signup" ? (signupStep === "form" ? "Send OTP" : "Create Account") : mode === "forgot" ? (signupStep === "form" ? "Send Reset OTP" : "Reset Password") : "Access Admin"}
+              </button>
+            )}
+
+            {(mode === "signup" || mode === "forgot") && signupStep === "otp" && (
+              <button type="button" onClick={() => { setSignupStep("form"); setOtp(""); setErr(""); setInfo(""); }} className="w-full bg-transparent border-none text-gray-500 text-xs font-semibold cursor-pointer hover:text-white hover:underline transition-colors mt-2">← Change email or resend OTP</button>
+            )}
+          </form>
+
         </div>
-      </div>
+      </main>
+
+      {/* Inline styles for custom animations */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes slideIn {
+          from { transform: translateY(24px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}} />
     </div>
   );
 }
@@ -584,15 +751,32 @@ function FollowManageCard({ user, onUserUpdate }) {
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
 
-function ProfilePage({ user, onUserUpdate, onBack }) {
+function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
   const fileRef = useRef(null);
+  const [currentTab, setCurrentTab] = useState("settings"); // "settings" | "posts"
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(null); // null | "security" | "account" | "password"
+
   const [newName, setNewName] = useState(user.name || "");
+  const [newBio, setNewBio] = useState(user.bio || "");
+  const [msgPrivacy, setMsgPrivacy] = useState(user.messagePrivacy || "Everyone");
   const [newPass, setNewPass] = useState("");
   const [confPass, setConfPass] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (currentTab === "posts") {
+      setLoadingPosts(true);
+      fetch(`${BASE_URL}/connect/user/${user.id}/posts`, { headers: { "Authorization": "Bearer " + window._authToken } })
+        .then(r => r.json())
+        .then(data => { setPosts(Array.isArray(data) ? data : []); setLoadingPosts(false); })
+        .catch(() => setLoadingPosts(false));
+    }
+  }, [currentTab, user.id]);
 
   async function handleDpChange(e) {
     const file = e.target.files?.[0];
@@ -620,6 +804,8 @@ function ProfilePage({ user, onUserUpdate, onBack }) {
     if (newPass && newPass.length < 6) { setErr("Password must be at least 6 characters."); return; }
     const body = {};
     if (newName.trim() !== user.name) body.name = newName.trim();
+    if (newBio.trim() !== (user.bio || "")) body.bio = newBio.trim();
+    if (msgPrivacy !== (user.messagePrivacy || "Everyone")) body.messagePrivacy = msgPrivacy;
     if (newPass) body.password = newPass;
     if (!Object.keys(body).length) { setMsg("No changes to save."); return; }
     setSaving(true);
@@ -627,7 +813,7 @@ function ProfilePage({ user, onUserUpdate, onBack }) {
       const res = await fetch(`${BASE_URL}/profile/update`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window._authToken }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { setErr(data.msg || "Error"); setSaving(false); return; }
-      onUserUpdate({ ...user, name: data.name, email: data.email });
+      onUserUpdate({ ...user, name: data.name, email: data.email, bio: body.bio || user.bio, messagePrivacy: body.messagePrivacy || user.messagePrivacy });
       setMsg("Profile updated ✓");
       setNewPass(""); setConfPass("");
     } catch { setErr("Server error"); }
@@ -646,73 +832,248 @@ function ProfilePage({ user, onUserUpdate, onBack }) {
           ← Back
         </button>
         <div>
-          <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800 }}>My Profile</h2>
-          <p style={{ color: COLORS.muted, marginTop: 2, fontSize: 14 }}>Manage your account and profile picture.</p>
+          <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800 }}>{user.name}</h2>
+          <p style={{ color: COLORS.muted, marginTop: 2, fontSize: 14 }}>Manage your account, view posts, and update your profile.</p>
         </div>
       </div>
 
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <div style={{ position: "relative" }}>
-            <Avatar src={user.avatar} name={user.name} size={80} />
-            <button onClick={() => fileRef.current?.click()} style={{ position: "absolute", bottom: -6, right: -6, width: 26, height: 26, borderRadius: "50%", background: COLORS.accent, border: "2px solid " + COLORS.surface, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 12 }}>✎</button>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleDpChange} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 18, fontFamily: "'Syne',sans-serif" }}>{user.name}</div>
-            <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 3 }}>{user.email}</div>
-            <button onClick={() => fileRef.current?.click()} disabled={uploading} style={{ marginTop: 10, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "6px 14px", color: COLORS.accent, fontFamily: "'Outfit',sans-serif", fontWeight: 600, fontSize: 12, cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? .6 : 1 }}>
-              {uploading ? "Uploading…" : "📷 Change Photo"}
-            </button>
-          </div>
-        </div>
-      </Card>
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
+        <button onClick={() => setCurrentTab("settings")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${currentTab === "settings" ? COLORS.blue : COLORS.border}`, background: currentTab === "settings" ? COLORS.blue + "22" : "transparent", color: currentTab === "settings" ? COLORS.blue : COLORS.muted, fontFamily: "'Outfit',sans-serif", fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
+          ⚙️ Settings
+        </button>
+        <button onClick={() => setCurrentTab("posts")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${currentTab === "posts" ? COLORS.accent : COLORS.border}`, background: currentTab === "posts" ? COLORS.accent + "22" : "transparent", color: currentTab === "posts" ? COLORS.accent : COLORS.muted, fontFamily: "'Outfit',sans-serif", fontWeight: 700, cursor: "pointer", transition: "all .2s" }}>
+          📝 My Posts
+        </button>
+      </div>
 
-      <Card>
+      {currentTab === "posts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Account Details</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Display Name</label>
-            <input value={newName} onChange={e => setNewName(e.target.value)} style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Email (cannot change)</label>
-            <input value={user.email} readOnly style={{ ...inputSt, opacity: .5, cursor: "not-allowed" }} />
-          </div>
-          <div style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
-            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, marginBottom: 12 }}>Change Password</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>New Password</label>
-                <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Leave blank to keep current" style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
+          {loadingPosts ? (
+            <div style={{ color: COLORS.muted, padding: 40, textAlign: "center" }}>Loading your posts…</div>
+          ) : posts.length === 0 ? (
+            <Card><div style={{ textAlign: "center", color: COLORS.muted, padding: "30px 0" }}>You haven't made any posts yet.</div></Card>
+          ) : (
+            posts.map(post => (
+              <PostCard key={post._id} post={post} currentUser={user}
+                onLike={async () => {
+                  try {
+                    await fetch(`${BASE_URL}/connect/post/${post._id}/like`, { method: "POST", headers: { "Authorization": "Bearer " + window._authToken } });
+                    setPosts(prev => prev.map(p => {
+                      if (p._id !== post._id) return p;
+                      const already = (p.likes || []).includes(user.id);
+                      return { ...p, likes: already ? p.likes.filter(id => id !== user.id) : [...(p.likes || []), user.id] };
+                    }));
+                  } catch {}
+                }}
+                onComment={async (text) => {
+                  if (!text.trim()) return;
+                  try {
+                    const res = await fetch(`${BASE_URL}/connect/post/${post._id}/comment`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window._authToken }, body: JSON.stringify({ text }) });
+                    if (res.ok) {
+                      const updated = await res.json();
+                      setPosts(prev => prev.map(p => p._id === post._id ? { ...p, comments: updated.comments || p.comments } : p));
+                    }
+                  } catch {}
+                }}
+                onFollowToggle={() => {}}
+                onViewProfile={() => {}}
+                onDelete={async (postId) => {
+                  try {
+                    await fetch(`${BASE_URL}/connect/post/${postId}`, { method: "DELETE", headers: { "Authorization": "Bearer " + window._authToken } });
+                    setPosts(prev => prev.filter(p => p._id !== postId));
+                  } catch {}
+                }}
+                onEdit={(postId, newText) => {
+                  setPosts(prev => prev.map(p => p._id === postId ? { ...p, text: newText } : p));
+                }}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {currentTab === "settings" && (
+        <>
+          {/* ── Profile card ── */}
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <div style={{ position: "relative" }}>
+                <Avatar src={user.avatar} name={user.name} size={80} />
+                <button onClick={() => fileRef.current?.click()} style={{ position: "absolute", bottom: -6, right: -6, width: 26, height: 26, borderRadius: "50%", background: COLORS.accent, border: "2px solid " + COLORS.surface, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 12 }}>✎</button>
+                <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleDpChange} />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Confirm Password</label>
-                <input type="password" value={confPass} onChange={e => setConfPass(e.target.value)} placeholder="Repeat new password" style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 18, fontFamily: "'Syne',sans-serif" }}>{user.name}</div>
+                {(() => {
+                  const specials = (user.specialBadges || []).filter(b => b && (b.image || b.icon));
+                  if (!specials.length) return null;
+                  // Show only the highest priority badge
+                  const top = specials.reduce((a, b) => (b.priority || 0) > (a.priority || 0) ? b : a, specials[0]);
+                  return (
+                    <div style={{ marginTop: 5 }}>
+                      <div title={top.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600, color: "#f5c518", fontFamily: "'Outfit',sans-serif", animation: "fadeUp .4s ease both" }}>
+                        {top.image ? <img src={top.image} alt={top.label} style={{ width: 14, height: 14, borderRadius: 3, objectFit: "cover" }} /> : <span style={{ fontSize: 13 }}>{top.icon}</span>}
+                        {top.label}
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{user.email}</div>
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} style={{ marginTop: 10, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "6px 14px", color: COLORS.accent, fontFamily: "'Outfit',sans-serif", fontWeight: 600, fontSize: 12, cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? .6 : 1 }}>
+                  {uploading ? "Uploading…" : "📷 Change Photo"}
+                </button>
               </div>
             </div>
-          </div>
-          {err && <div style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 10, padding: "10px 14px", color: COLORS.danger, fontSize: 13 }}>⚠ {err}</div>}
-          {msg && !err && <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}33`, borderRadius: 10, padding: "10px 14px", color: COLORS.accent, fontSize: 13 }}>✓ {msg}</div>}
-          <Btn onClick={saveProfile} disabled={saving}>{saving ? "Saving…" : "💾 Save Changes"}</Btn>
-        </div>
-      </Card>
+          </Card>
 
-      <Card>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Your Stats</div>
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-          {[{ label: "XP", val: user.xp || 0, icon: "⭐" }, { label: "Streak", val: user.streak || 0, icon: "🔥" }, { label: "Max Streak", val: user.maxStreak || 0, icon: "⚡" }, { label: "Badges", val: (user.badges || []).length, icon: "🏅" }, { label: "Plans", val: user.plans || 0, icon: "🗓" }].map(s => (
-            <div key={s.label} style={{ textAlign: "center", minWidth: 60 }}>
-              <div style={{ fontSize: 22 }}>{s.icon}</div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 22, color: COLORS.accent }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: COLORS.muted }}>{s.label}</div>
+          {/* ── Settings menu list ── */}
+          <Card>
+            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 15, marginBottom: 14, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11 }}>Settings</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {[
+                { id: "account",  icon: "👤", label: "Account Details",     sub: "Name, bio, email" },
+                { id: "password", icon: "🔑", label: "Change Password",      sub: "Update your password" },
+                { id: "security", icon: "🛡️", label: "Security & Privacy",   sub: "Message privacy controls" },
+                { id: "stats",    icon: "📊", label: "Stats & Achievements", sub: `XP ${user.xp || 0} · Streak ${user.streak || 0}` },
+              ].map(item => (
+                <button key={item.id} onClick={() => setDrawerOpen(item.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", background: "transparent", border: "none", borderRadius: 12, padding: "13px 10px", cursor: "pointer", textAlign: "left", transition: "background .15s" }}
+                  onMouseOver={e => e.currentTarget.style.background = COLORS.surfaceAlt}
+                  onMouseOut={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ fontSize: 22, width: 32, textAlign: "center" }}>{item.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "'Outfit',sans-serif", fontWeight: 600, fontSize: 14, color: COLORS.text }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{item.sub}</div>
+                  </div>
+                  <span style={{ fontSize: 16, color: COLORS.muted }}>›</span>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      </Card>
+          </Card>
 
-      {/* Followers / Following Management */}
-      <FollowManageCard user={user} onUserUpdate={onUserUpdate} />
+          {/* ── Followers management ── */}
+          <FollowManageCard user={user} onUserUpdate={onUserUpdate} />
+
+          <div style={{ marginTop: 10 }}>
+            <Btn variant="danger" onClick={onLogout} style={{ width: "100%", padding: "14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, fontSize: 15 }}>
+              <span>⏻</span> Sign Out from ZuxterX
+            </Btn>
+          </div>
+
+          {/* ── Side Drawer ── */}
+          {drawerOpen && (
+            <div style={{ position: "fixed", inset: 0, zIndex: 3000, display: "flex" }} onClick={() => setDrawerOpen(null)}>
+              {/* backdrop */}
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.55)" }} />
+              {/* panel */}
+              <div style={{ width: "min(380px, 96vw)", background: COLORS.surface, borderLeft: `1px solid ${COLORS.border}`, height: "100%", overflowY: "auto", display: "flex", flexDirection: "column", animation: "slideInRight .25s ease" }}
+                onClick={e => e.stopPropagation()}>
+                {/* drawer header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: `1px solid ${COLORS.border}` }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 18 }}>
+                    {drawerOpen === "account" && "👤 Account Details"}
+                    {drawerOpen === "password" && "🔑 Change Password"}
+                    {drawerOpen === "security" && "🛡️ Security & Privacy"}
+                    {drawerOpen === "stats" && "📊 Stats"}
+                  </div>
+                  <button onClick={() => setDrawerOpen(null)} style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, color: COLORS.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                </div>
+
+                {/* drawer body */}
+                <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+                  {/* ── Account Details ── */}
+                  {drawerOpen === "account" && (
+                    <>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Display Name</label>
+                        <input value={newName} onChange={e => setNewName(e.target.value)} style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Bio</label>
+                        <textarea value={newBio} onChange={e => setNewBio(e.target.value)} rows={4} style={{ ...inputSt, resize: "none" }} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} placeholder="Tell us about yourself..." />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Email (cannot change)</label>
+                        <input value={user.email} readOnly style={{ ...inputSt, opacity: .5, cursor: "not-allowed" }} />
+                      </div>
+                      {err && <div style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 10, padding: "10px 14px", color: COLORS.danger, fontSize: 13 }}>⚠ {err}</div>}
+                      {msg && !err && <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}33`, borderRadius: 10, padding: "10px 14px", color: COLORS.accent, fontSize: 13 }}>✓ {msg}</div>}
+                      <Btn onClick={saveProfile} disabled={saving}>{saving ? "Saving…" : "💾 Save Changes"}</Btn>
+                    </>
+                  )}
+
+                  {/* ── Change Password ── */}
+                  {drawerOpen === "password" && (
+                    <>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>New Password</label>
+                        <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Leave blank to keep current" style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Confirm Password</label>
+                        <input type="password" value={confPass} onChange={e => setConfPass(e.target.value)} placeholder="Repeat new password" style={inputSt} onFocus={e => e.target.style.borderColor = COLORS.accent} onBlur={e => e.target.style.borderColor = COLORS.border} />
+                      </div>
+                      {err && <div style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 10, padding: "10px 14px", color: COLORS.danger, fontSize: 13 }}>⚠ {err}</div>}
+                      {msg && !err && <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}33`, borderRadius: 10, padding: "10px 14px", color: COLORS.accent, fontSize: 13 }}>✓ {msg}</div>}
+                      <Btn onClick={saveProfile} disabled={saving}>{saving ? "Saving…" : "🔒 Update Password"}</Btn>
+                    </>
+                  )}
+
+                  {/* ── Security & Privacy ── */}
+                  {drawerOpen === "security" && (
+                    <>
+                      <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" }}>
+                        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${COLORS.border}` }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Syne',sans-serif", marginBottom: 4 }}>💬 Who can message me?</div>
+                          <div style={{ fontSize: 12, color: COLORS.muted }}>Control who can send you direct messages</div>
+                        </div>
+                        {[
+                          { val: "Everyone",       icon: "🌍", desc: "Anyone on the platform" },
+                          { val: "Followers Only",  icon: "👥", desc: "Only people you follow back" },
+                          { val: "No One",          icon: "🔒", desc: "No one can message you" },
+                        ].map(opt => (
+                          <label key={opt.val} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: `1px solid ${COLORS.border}`, background: msgPrivacy === opt.val ? COLORS.accent + "0f" : "transparent", transition: "background .15s" }}
+                            onMouseOver={e => e.currentTarget.style.background = COLORS.accent + "12"}
+                            onMouseOut={e => e.currentTarget.style.background = msgPrivacy === opt.val ? COLORS.accent + "0f" : "transparent"}>
+                            <input type="radio" name="msgPrivacy" value={opt.val} checked={msgPrivacy === opt.val} onChange={e => setMsgPrivacy(e.target.value)} style={{ accentColor: COLORS.accent, width: 16, height: 16 }} />
+                            <span style={{ fontSize: 20, width: 28, textAlign: "center" }}>{opt.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: 14, color: msgPrivacy === opt.val ? COLORS.accent : COLORS.text }}>{opt.val}</div>
+                              <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{opt.desc}</div>
+                            </div>
+                            {msgPrivacy === opt.val && <span style={{ fontSize: 16, color: COLORS.accent }}>✓</span>}
+                          </label>
+                        ))}
+                        <div style={{ padding: "14px 16px" }}>
+                          {err && <div style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 10, padding: "10px 14px", color: COLORS.danger, fontSize: 13, marginBottom: 10 }}>⚠ {err}</div>}
+                          {msg && !err && <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}33`, borderRadius: 10, padding: "10px 14px", color: COLORS.accent, fontSize: 13, marginBottom: 10 }}>✓ {msg}</div>}
+                          <Btn onClick={saveProfile} disabled={saving}>{saving ? "Saving…" : "💾 Save Privacy Settings"}</Btn>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Stats ── */}
+                  {drawerOpen === "stats" && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                      {[{ label: "XP", val: user.xp || 0, icon: "⭐" }, { label: "Streak", val: user.streak || 0, icon: "🔥" }, { label: "Max Streak", val: user.maxStreak || 0, icon: "⚡" }, { label: "Badges", val: (user.badges || []).length, icon: "🏅" }, { label: "Plans", val: user.plans || 0, icon: "🗓" }].map(s => (
+                        <div key={s.label} style={{ textAlign: "center", background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "20px 24px", flex: "1 1 120px" }}>
+                          <div style={{ fontSize: 28 }}>{s.icon}</div>
+                          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 26, color: COLORS.accent, marginTop: 6 }}>{s.val}</div>
+                          <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4 }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -949,9 +1310,71 @@ function ZuxterConnect({ user, onUserUpdate }) {
     </div>
   );
 }
+// ─── POST SHARE MODAL ─────────────────────────────────────────────────────────
+
+function PostShareModal({ post, onClose }) {
+  const [inbox, setInbox] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE_URL}/msg/inbox`, { headers: { "Authorization": "Bearer " + window._authToken } })
+      .then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setInbox(data);
+      }).catch(()=>{});
+  }, []);
+
+  async function sendToUser(toId) {
+    setSending(true);
+    try {
+      await fetch(`${BASE_URL}/msg/send`, {
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window._authToken },
+        body: JSON.stringify({ toId, type: "post_share", postId: post._id, postPreview: post.text ? post.text.substring(0, 40) + "..." : "Image post" })
+      });
+      alert("Sent!");
+      onClose();
+    } catch {}
+    setSending(false);
+  }
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onClose}>
+      <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 16, width: "100%", maxWidth: 360, padding: 24, paddingBottom: 16 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.text }}>Share Post</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", fontSize: 20 }}>×</button>
+        </div>
+        
+        <button onClick={() => { navigator.clipboard.writeText(window.location.origin + "/?postId=" + post._id); setCopied(true); setTimeout(()=>setCopied(false),2000); }}
+          style={{ width: "100%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, padding: 12, borderRadius: 10, color: COLORS.text, cursor: "pointer", fontFamily: "'Outfit',sans-serif", fontWeight: 600, display: "flex", justifyContent: "center", alignItems: "center", gap: 8, transition: "background .15s" }}
+          onMouseOver={e=>e.target.style.background=COLORS.surfaceAlt} onMouseOut={e=>e.target.style.background=COLORS.surface}>
+          {copied ? "✓ Copied!" : "🔗 Copy Link"}
+        </button>
+
+        <div style={{ marginTop: 20, marginBottom: 8, fontSize: 13, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Send to Messages</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflowY: "auto" }}>
+          {inbox.length === 0 ? (
+             <div style={{ color: COLORS.muted, fontSize: 13, padding: "10px 0" }}>No recent conversations to send to. Please copy the link instead.</div>
+          ) : inbox.map(i => (
+             <div key={i.otherId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: COLORS.surface, border: `1px solid ${COLORS.border}`, padding: "8px 12px", borderRadius: 10 }}>
+               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                 <Avatar src={i.otherAvatar} name={i.otherName} size={28} />
+                 <span style={{ fontSize: 13, fontWeight: 600 }}>{i.otherName}</span>
+               </div>
+               <button onClick={() => sendToUser(i.otherId)} disabled={sending} style={{ background: COLORS.blue, border: "none", color: "#000", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Send</button>
+             </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── POST CARD ────────────────────────────────────────────────────────────────
 
 function PostCard({ post, currentUser, onLike, onComment, onFollowToggle, onViewProfile, onDelete, onEdit }) {
   const [showComments, setShowComments] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(post.text || "");
@@ -993,6 +1416,7 @@ function PostCard({ post, currentUser, onLike, onComment, onFollowToggle, onView
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span onClick={() => onViewProfile(post.authorId)} style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Syne',sans-serif", cursor: "pointer", color: COLORS.text }}
               onMouseOver={e => e.target.style.color = COLORS.blue} onMouseOut={e => e.target.style.color = COLORS.text}>{post.authorName}</span>
+            {(post.authorSpecialBadges || []).length > 0 && <SpecialBadgeRow badges={post.authorSpecialBadges} />}
             <span style={{ fontSize: 11, color: COLORS.muted }}>{timeAgo(post.createdAt)}</span>
             {!isOwn && (
               <button className="connect-btn" onClick={() => onFollowToggle(post.authorId)}
@@ -1041,15 +1465,21 @@ function PostCard({ post, currentUser, onLike, onComment, onFollowToggle, onView
       )}
 
       <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLORS.border}` }}>
-        <button className="like-btn" onClick={onLike}
-          style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", cursor: "pointer", color: liked ? COLORS.pink : COLORS.muted, fontSize: 13, fontFamily: "'Outfit',sans-serif", fontWeight: liked ? 600 : 400 }}>
-          <span style={{ fontSize: 16 }}>{liked ? "❤️" : "🤍"}</span> {(post.likes || []).length}
+        <button className="like-btn" onClick={e => { e.stopPropagation(); onLike(); }}
+          style={{ display: "flex", alignItems: "center", gap: 5, background: liked ? "rgba(255,80,80,0.12)" : COLORS.surfaceAlt, borderRadius: 4, padding: "3px 8px", border: `1px solid ${liked ? "rgba(255,80,80,0.4)" : COLORS.border}`, cursor: "pointer", color: liked ? "#ff5555" : COLORS.muted, fontSize: 12, fontFamily: "'Outfit',sans-serif", fontWeight: liked ? 700 : 400, transition: "all .15s" }}>
+          <span style={{ fontSize: 14, lineHeight: 1 }}>{liked ? "❤️" : "🤍"}</span> {(post.likes || []).length}
         </button>
         <button onClick={() => setShowComments(v => !v)}
           style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", cursor: "pointer", color: showComments ? COLORS.blue : COLORS.muted, fontSize: 13, fontFamily: "'Outfit',sans-serif" }}>
           <span style={{ fontSize: 16 }}>💬</span> {(post.comments || []).length}
         </button>
+        <button onClick={() => setShowShare(true)}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", cursor: "pointer", color: COLORS.blue, fontSize: 13, fontFamily: "'Outfit',sans-serif", marginLeft: "auto" }}>
+          <span style={{ fontSize: 15 }}>↗️</span> Share
+        </button>
       </div>
+
+      {showShare && <PostShareModal post={post} onClose={() => setShowShare(false)} />}
 
       {showComments && (
         <div style={{ marginTop: 14 }}>
@@ -1105,6 +1535,34 @@ function UserProfileView({ userId, currentUser, onBack, onFollow, onMessage }) {
     load();
   }, [userId]);
 
+  async function handleLike(postId) {
+    try {
+      await fetch(`${BASE_URL}/connect/post/${postId}/like`, {
+        method: "POST", headers: { "Authorization": "Bearer " + window._authToken }
+      });
+      setPosts(prev => prev.map(p => {
+        if (p._id !== postId) return p;
+        const already = (p.likes || []).includes(currentUser.id);
+        return { ...p, likes: already ? p.likes.filter(id => id !== currentUser.id) : [...(p.likes || []), currentUser.id] };
+      }));
+    } catch { }
+  }
+
+  async function handleComment(postId, text) {
+    if (!text.trim()) return;
+    try {
+      const res = await fetch(`${BASE_URL}/connect/post/${postId}/comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window._authToken },
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setPosts(prev => prev.map(p => p._id === postId ? { ...p, comments: updated.comments || p.comments } : p));
+      }
+    } catch { }
+  }
+
   if (loading) return <div style={{ color: COLORS.muted, padding: 40, textAlign: "center" }}>Loading profile…</div>;
   if (!profile) return <div style={{ color: COLORS.danger, padding: 40 }}>User not found.</div>;
 
@@ -1121,8 +1579,40 @@ function UserProfileView({ userId, currentUser, onBack, onFollow, onMessage }) {
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <Avatar src={profile.avatar} name={profile.name} size={80} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 22 }}>{profile.name}</div>
-            <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 3 }}>{profile.email}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexDirection: "column" }}>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 22 }}>{profile.name}</div>
+              {/* Standard earned badges (round icons) */}
+              {(profile.badges || []).length > 0 && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {(profile.badges || []).map(b => {
+                    let icon = "🏅";
+                    if (b === "first_plan") icon = "🗓";
+                    if (b === "streak3") icon = "🔥";
+                    if (b === "streak7") icon = "⚡";
+                    if (b === "ten_q") icon = "❓";
+                    if (b === "explorer") icon = "🌐";
+                    if (b === "top3") icon = "🏆";
+                    return <div key={b} title={b} style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, cursor: "help" }}>{icon}</div>;
+                  })}
+                </div>
+              )}
+              {/* Special achievement badges — only highest priority shown */}
+              {(() => {
+                const specials = (profile.specialBadges || []).filter(b => b && (b.image || b.icon));
+                if (!specials.length) return null;
+                const top = specials.reduce((a, b) => (b.priority || 0) > (a.priority || 0) ? b : a, specials[0]);
+                return (
+                  <div>
+                    <div title={top.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600, color: "#f5c518", fontFamily: "'Outfit',sans-serif", animation: "fadeUp .4s ease both" }}>
+                      {top.image ? <img src={top.image} alt={top.label} style={{ width: 14, height: 14, borderRadius: 3, objectFit: "cover" }} /> : <span style={{ fontSize: 13 }}>{top.icon}</span>}
+                      {top.label}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            {profile.bio && <div style={{ color: COLORS.text, fontSize: 14, marginTop: 4, lineHeight: 1.5 }}>{profile.bio}</div>}
+            <div style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>{profile.email}</div>
             <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontWeight: 800, fontSize: 18, color: COLORS.accent, fontFamily: "'Syne',sans-serif" }}>{(profile.followers || []).length}</div>
@@ -1156,19 +1646,23 @@ function UserProfileView({ userId, currentUser, onBack, onFollow, onMessage }) {
       <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 16, color: COLORS.muted }}>Posts ({posts.length})</div>
       {posts.length === 0 ? (
         <Card><div style={{ textAlign: "center", color: COLORS.muted, padding: "20px 0" }}>No posts yet.</div></Card>
-      ) : posts.map(post => (
-        <div key={post._id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "16px 18px" }}>
-          {post.text && <p style={{ fontSize: 14, lineHeight: 1.7 }}>{post.text}</p>}
-          {post.image && <img src={post.image} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 10, marginTop: 10 }} />}
-          <div style={{ display: "flex", gap: 16, marginTop: 10, color: COLORS.muted, fontSize: 12 }}>
-            <span>❤️ {(post.likes || []).length}</span>
-            <span>💬 {(post.comments || []).length}</span>
-          </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {posts.map(post => (
+            <PostCard key={post._id} post={post} currentUser={currentUser}
+              onLike={() => handleLike(post._id)}
+              onComment={(text) => handleComment(post._id, text)}
+              onFollowToggle={onFollow}
+              onViewProfile={() => {}}
+              onDelete={() => {}}
+              onEdit={() => {}} />
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
+
 
 // ─── SUPPORT TICKET PAGE ──────────────────────────────────────────────────────
 
@@ -1283,8 +1777,57 @@ function SupportPage({ user }) {
 
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 
+// ─── GUEST TICKET REPLY (inline reply box for unauthorized tickets) ──────────
+
+function GuestTicketReply({ ticketId, onDone }) {
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function send() {
+    if (!reply.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch(`${BASE_URL}/admin/ticket/${ticketId}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "AdminBearer " + window._adminToken },
+        body: JSON.stringify({ reply, status: "resolved" })
+      });
+      if (res.ok) { setSent(true); setTimeout(onDone, 1000); }
+    } catch {}
+    setSending(false);
+  }
+
+  if (sent) return (
+    <div style={{ marginTop: 10, fontSize: 13, color: COLORS.accent, fontWeight: 600 }}>✓ Reply sent — email dispatched to user!</div>
+  );
+
+  return (
+    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+      <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        Admin Reply <span style={{ color: COLORS.accent, fontWeight: 400, textTransform: "none" }}>(will be emailed to user)</span>
+      </label>
+      <textarea
+        value={reply}
+        onChange={e => setReply(e.target.value)}
+        placeholder="Write your reply here… It will be sent to the user's email with a 'Do not reply' footer."
+        rows={5}
+        style={{ width: "100%", background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "12px 14px", color: COLORS.text, fontFamily: "'DM Sans',sans-serif", fontSize: 13, outline: "none", resize: "vertical", lineHeight: 1.7, boxSizing: "border-box", transition: "border .18s" }}
+        onFocus={e => e.target.style.borderColor = COLORS.admin}
+        onBlur={e => e.target.style.borderColor = COLORS.border}
+      />
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={send} disabled={sending || !reply.trim()}
+          style={{ background: sending ? COLORS.admin + "55" : COLORS.admin, border: "none", borderRadius: 9, padding: "9px 22px", color: "#fff", cursor: sending ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Outfit',sans-serif", display: "flex", alignItems: "center", gap: 7, transition: "opacity .18s" }}>
+          {sending ? <><BtnSpinner /> Sending…</> : "↩ Reply & Send Email"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel({ adminEmail, onLogout }) {
-  const [tab, setTab] = useState("users"); // "users" | "tickets" | "connect" | "online"
+  const [tab, setTab] = useState("users"); // "users" | "tickets" | "unauthorized" | "connect" | "online" | "achievements"
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1297,8 +1840,22 @@ function AdminPanel({ adminEmail, onLogout }) {
   const [editStreak, setEditStreak] = useState("");
   const [badgeInput, setBadgeInput] = useState("first_plan");
   const [tickets, setTickets] = useState([]);
+  const [guestTickets, setGuestTickets] = useState([]);
+  const [customAchievements, setCustomAchievements] = useState([]);
   const [connectPosts, setConnectPosts] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  // achievement form state
+  const [achLabel, setAchLabel] = useState("");
+  const [achDesc, setAchDesc] = useState("");
+  const [achIcon, setAchIcon] = useState("🏆");
+  const [achImage, setAchImage] = useState(""); // base64
+  const [achType, setAchType] = useState("normal");   // "normal" | "special"
+  const [achDuration, setAchDuration] = useState("");  // days, empty = forever
+  const [achPriority, setAchPriority] = useState("");  // higher = shown in profile card
+  const [achSaving, setAchSaving] = useState(false);
+  const [achMsg, setAchMsg] = useState("");
+  const [achGoals, setAchGoals] = useState({ xp: "", streak: "", plans: "", qSets: "", summaries: "", followers: "" });
+  const setGoal = (k, v) => setAchGoals(g => ({ ...g, [k]: v }));
 
   async function loadUsers() {
     setLoading(true);
@@ -1310,6 +1867,16 @@ function AdminPanel({ adminEmail, onLogout }) {
   async function loadTickets() {
     const { ok, data } = await adminFetch("/admin/tickets");
     if (ok) setTickets(data);
+  }
+
+  async function loadGuestTickets() {
+    const { ok, data } = await adminFetch("/admin/guest-tickets");
+    if (ok) setGuestTickets(data);
+  }
+
+  async function loadCustomAchievements() {
+    const { ok, data } = await adminFetch("/admin/achievements");
+    if (ok) setCustomAchievements(data);
   }
 
   async function loadConnectPosts() {
@@ -1325,9 +1892,11 @@ function AdminPanel({ adminEmail, onLogout }) {
   useEffect(() => {
     loadUsers();
     loadTickets();
+    loadGuestTickets();
+    loadCustomAchievements();
     loadConnectPosts();
     loadOnline();
-    const interval = setInterval(loadOnline, 15000); // refresh online every 15s
+    const interval = setInterval(loadOnline, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1350,8 +1919,9 @@ function AdminPanel({ adminEmail, onLogout }) {
   }
 
   async function deleteTicket(ticketId) {
+    if (!window.confirm("Delete this ticket? This cannot be undone.")) return;
     const { ok } = await adminFetch(`/admin/ticket/${ticketId}`, "DELETE");
-    if (ok) loadTickets();
+    if (ok) { loadTickets(); loadGuestTickets(); }
   }
 
   async function deleteComment(postId, commentIdx) {
@@ -1371,6 +1941,8 @@ function AdminPanel({ adminEmail, onLogout }) {
     { id: "users", label: `👥 Users (${users.length})` },
     { id: "online", label: `🟢 Online (${onlineUsers.length})` },
     { id: "tickets", label: `🎫 Tickets (${tickets.filter(t => t.status === "open").length} open)` },
+    { id: "unauthorized", label: `🔒 Unauthorized (${guestTickets.filter(t => t.status === "open").length} open)` },
+    { id: "achievements", label: `🏆 Achievements (${customAchievements.length})` },
     { id: "connect", label: `🌐 Posts (${connectPosts.length})` },
   ];
 
@@ -1561,6 +2133,215 @@ function AdminPanel({ adminEmail, onLogout }) {
           </div>
         )}
 
+        {/* UNAUTHORIZED / GUEST TICKETS TAB */}
+        {tab === "unauthorized" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 20, display: "flex", alignItems: "center", gap: 10 }}>
+                🔒 Unauthorized Support Tickets
+                {guestTickets.filter(t => t.status === "open").length > 0 && (
+                  <span style={{ background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44`, borderRadius: 8, padding: "2px 10px", fontSize: 13, fontWeight: 700 }}>
+                    {guestTickets.filter(t => t.status === "open").length} open
+                  </span>
+                )}
+              </h3>
+              <p style={{ color: COLORS.muted, fontSize: 13, marginTop: 4 }}>These tickets come from users who couldn't log in and requested help from the sign-in screen.</p>
+            </div>
+            {guestTickets.length === 0 ? (
+              <Card>
+                <div style={{ textAlign: "center", color: COLORS.muted, padding: "40px 0" }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+                  <div>No unauthorized support tickets. All good!</div>
+                </div>
+              </Card>
+            ) : (
+              guestTickets.map(t => (
+                <Card key={t._id}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 15 }}>{t.subject}</div>
+                      <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 3 }}>
+                        👤 {t.userName} &nbsp;·&nbsp; 📬 {t.userEmail} &nbsp;·&nbsp; {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, border: `1px solid ${t.status === "open" ? COLORS.danger + "55" : COLORS.accent + "44"}`, background: t.status === "open" ? COLORS.danger + "15" : COLORS.accent + "12", color: t.status === "open" ? COLORS.danger : COLORS.accent, fontWeight: 700, textTransform: "uppercase" }}>
+                        {t.status}
+                      </span>
+                      <button onClick={() => deleteTicket(t._id)} style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}33`, borderRadius: 7, padding: "4px 10px", color: COLORS.danger, cursor: "pointer", fontSize: 11 }}>🗑 Delete</button>
+                    </div>
+                  </div>
+                  <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: COLORS.text, lineHeight: 1.6, marginBottom: t.adminReply ? 12 : 0 }}>
+                    {t.message}
+                  </div>
+                  {t.adminReply && (
+                    <div style={{ marginTop: 10, background: COLORS.accent + "0a", border: `1px solid ${COLORS.accent}22`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: COLORS.accent }}>
+                      <strong>Admin reply:</strong> {t.adminReply}
+                    </div>
+                  )}
+                  {!t.adminReply && (
+                    <GuestTicketReply ticketId={t._id} onDone={() => { loadGuestTickets(); }} />
+                  )}
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ACHIEVEMENTS TAB */}
+        {tab === "achievements" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 20 }}>🏆 Custom Achievements</h3>
+
+            {/* CREATE FORM */}
+            <Card style={{ border: `1px solid ${COLORS.gold}33` }}>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 15, marginBottom: 16, color: COLORS.gold }}>+ Add New Achievement</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Achievement Name *</label>
+                  <input value={achLabel} onChange={e => setAchLabel(e.target.value)} placeholder="e.g. Community Star" style={panelInput} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Icon (Emoji)</label>
+                  <input value={achIcon} onChange={e => setAchIcon(e.target.value)} placeholder="🏆" maxLength={4} style={{ ...panelInput, fontSize: 22, textAlign: "center", width: 70 }} />
+                </div>
+              </div>
+              {/* Type toggle + Duration + Priority */}
+              <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Achievement Type</label>
+                  <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
+                    {["normal", "special"].map(t => (
+                      <button key={t} onClick={() => setAchType(t)}
+                        style={{ flex: 1, padding: "9px 0", border: "none", background: achType === t ? (t === "special" ? COLORS.gold : COLORS.accent) : "transparent", color: achType === t ? "#000" : COLORS.muted, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Outfit',sans-serif", textTransform: "capitalize", transition: "all .18s" }}>
+                        {t === "special" ? "⭐ Special" : "🏅 Normal"}
+                      </button>
+                    ))}
+                  </div>
+                  {achType === "special" && (
+                    <div style={{ fontSize: 11, color: COLORS.gold, background: COLORS.gold + "12", borderRadius: 7, padding: "6px 10px" }}>
+                      ⭐ Profile card mein naam ke niche dikhega. Sabse zyada priority wala badge dikhega.
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Duration (Days)</label>
+                  <input
+                    type="number" min="0" value={achDuration}
+                    onChange={e => setAchDuration(e.target.value)}
+                    placeholder="0 = Never expires"
+                    style={{ ...panelInput, padding: "9px 12px" }}
+                  />
+                  <div style={{ fontSize: 11, color: COLORS.muted }}>Leave blank or 0 for permanent.</div>
+                </div>
+              </div>
+              {/* Priority — only for special achievements */}
+              {achType === "special" && (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, textTransform: "uppercase" }}>⭐ Priority (Profile Card)</label>
+                  <input
+                    type="number" min="0" value={achPriority}
+                    onChange={e => setAchPriority(e.target.value)}
+                    placeholder="e.g. 10 (higher = shown first)"
+                    style={{ ...panelInput, padding: "9px 12px", borderColor: COLORS.gold + "55" }}
+                  />
+                  <div style={{ fontSize: 11, color: COLORS.muted }}>Agar kisi user ke paas multiple special badges hain, sabse zyada priority wala profile card mein dikhega.</div>
+                </div>
+              )}
+              <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>🎯 Auto-Award Goals <span style={{ color: COLORS.muted, fontWeight: 400, textTransform: "none" }}>(leave blank = no requirement)</span></label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
+                  {[
+                    { key: "xp",        label: "Min XP",        placeholder: "e.g. 100" },
+                    { key: "streak",    label: "Day Streak",    placeholder: "e.g. 7" },
+                    { key: "plans",     label: "Study Plans",   placeholder: "e.g. 5" },
+                    { key: "qSets",     label: "Question Sets", placeholder: "e.g. 10" },
+                    { key: "summaries", label: "Summaries",     placeholder: "e.g. 3" },
+                    { key: "followers", label: "Followers",     placeholder: "e.g. 20" },
+                  ].map(g => (
+                    <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <label style={{ fontSize: 10, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>{g.label}</label>
+                      <input
+                        type="number" min="0"
+                        value={achGoals[g.key]}
+                        onChange={e => setGoal(g.key, e.target.value)}
+                        placeholder={g.placeholder}
+                        style={{ ...panelInput, padding: "7px 10px" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>Users are auto-awarded when they meet ALL filled-in goals. Leave all blank = admin must grant manually.</div>
+              </div>
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Description</label>
+                <input value={achDesc} onChange={e => setAchDesc(e.target.value)} placeholder="What does this achievement represent?" style={panelInput} />
+              </div>
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, textTransform: "uppercase" }}>Custom Image (optional — replaces emoji)</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, color: COLORS.muted, fontWeight: 500 }}>
+                    🖼️ Choose Image
+                    <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => setAchImage(ev.target.result);
+                      reader.readAsDataURL(file);
+                    }} />
+                  </label>
+                  {achImage ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <img src={achImage} alt="preview" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", border: `1px solid ${COLORS.border}` }} />
+                      <button onClick={() => setAchImage("")} style={{ background: "none", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 12 }}>Remove</button>
+                    </div>
+                  ) : <span style={{ fontSize: 12, color: COLORS.muted }}>No image selected — emoji will be used</span>}
+                </div>
+              </div>
+              {achMsg && <div style={{ marginTop: 10, fontSize: 13, color: achMsg.includes("Error") ? COLORS.danger : COLORS.accent, fontWeight: 600 }}>{achMsg}</div>}
+              <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  disabled={achSaving || !achLabel.trim()}
+                  onClick={async () => {
+                    setAchSaving(true); setAchMsg("");
+                    const { ok, data } = await adminFetch("/admin/achievements", "POST", { label: achLabel, desc: achDesc, icon: achIcon || "🏆", image: achImage, goals: achGoals, type: achType, durationDays: achDuration || 0, priority: achPriority || 0 });
+                    if (ok) { setAchLabel(""); setAchDesc(""); setAchIcon("🏆"); setAchImage(""); setAchGoals({ xp: "", streak: "", plans: "", qSets: "", summaries: "", followers: "" }); setAchType("normal"); setAchDuration(""); setAchPriority(""); setAchMsg("✓ Achievement created!"); loadCustomAchievements(); setTimeout(() => setAchMsg(""), 2500); }
+                    else { setAchMsg("Error: " + (data?.msg || "Failed")); }
+                    setAchSaving(false);
+                  }}
+                  style={{ background: achSaving || !achLabel.trim() ? COLORS.gold + "44" : COLORS.gold, border: "none", borderRadius: 9, padding: "10px 24px", color: "#000", fontWeight: 700, fontSize: 13, cursor: achSaving || !achLabel.trim() ? "not-allowed" : "pointer", fontFamily: "'Outfit',sans-serif", display: "flex", alignItems: "center", gap: 7 }}>
+                  {achSaving ? <><BtnSpinner /> Saving…</> : "🏆 Create Achievement"}
+                </button>
+              </div>
+            </Card>
+
+            {/* LIST */}
+            {customAchievements.length === 0 ? (
+              <Card><div style={{ color: COLORS.muted, textAlign: "center", padding: "32px 0", fontSize: 13 }}>No custom achievements yet. Create your first one above! 🏆</div></Card>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px,1fr))", gap: 14 }}>
+                {customAchievements.map(a => (
+                  <Card key={a.id} style={{ textAlign: "center", padding: "20px 14px", position: "relative", border: `1px solid ${COLORS.gold}33` }}>
+                    <button
+                      onClick={async () => { if (window.confirm("Delete this achievement?")) { await adminFetch(`/admin/achievements/${a.id}`, "DELETE"); loadCustomAchievements(); }}}
+                      style={{ position: "absolute", top: 8, right: 8, background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}33`, borderRadius: 6, padding: "3px 8px", color: COLORS.danger, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                      🗑
+                    </button>
+                    {a.image ? (
+                      <img src={a.image} alt={a.label} style={{ width: 56, height: 56, borderRadius: 12, objectFit: "cover", margin: "0 auto 10px", display: "block", border: `2px solid ${COLORS.gold}44` }} />
+                    ) : (
+                      <div style={{ fontSize: 40, marginBottom: 10 }}>{a.icon}</div>
+                    )}
+                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: COLORS.gold }}>{a.label}</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 6, lineHeight: 1.5 }}>{a.desc}</div>
+                    <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 8 }}>{a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ""}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* CONNECT POSTS TAB */}
         {tab === "connect" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1659,7 +2440,7 @@ function TicketCard({ ticket, onReply, onDelete }) {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, marginLeft: 10 }}>
           <span style={{ fontSize: 11, background: (statusColor[ticket.status] || COLORS.muted) + "22", color: statusColor[ticket.status] || COLORS.muted, border: `1px solid ${(statusColor[ticket.status] || COLORS.muted)}44`, borderRadius: 6, padding: "3px 10px", fontWeight: 600, textTransform: "uppercase" }}>{ticket.status}</span>
-          <button onClick={() => { if (window.confirm("Delete this ticket?")) onDelete(ticket._id); }}
+          <button onClick={() => onDelete(ticket._id)}
             style={{ background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}44`, borderRadius: 6, padding: "3px 9px", color: COLORS.danger, cursor: "pointer", fontSize: 11, fontFamily: "'Outfit',sans-serif", fontWeight: 600 }}>🗑 Delete</button>
         </div>
       </div>
@@ -1903,20 +2684,169 @@ function SummaryPage({ user, onUpdate }) {
 
 function BadgesPage({ user }) {
   const earned = new Set(user.badges || []);
+  const [activeAchs, setActiveAchs]   = useState([]); // from check endpoint
+  const [customBadges, setCustomBadges] = useState([]); // user's earned snapshots
+  const [stats, setStats]             = useState({});
+  const [newlyEarned, setNewlyEarned] = useState([]);
+  const [showNew, setShowNew]         = useState(false);
+  const [checking, setChecking]       = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/achievements/check`, {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + window._authToken, "Content-Type": "application/json" }
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setActiveAchs(d.active || []);
+          setCustomBadges(d.customBadges || []);
+          setStats(d.stats || {});
+          if ((d.newly_awarded || []).length > 0) { setNewlyEarned(d.newly_awarded); setShowNew(true); }
+        }
+      } catch {}
+      setChecking(false);
+    })();
+  }, []);
+
+  // Achievements user earned but that are no longer active (admin deleted them)
+  const activeIds = new Set(activeAchs.map(a => a.id));
+  const pastEarned = customBadges.filter(b => !activeIds.has(b.id));
+
+  const GOAL_LABELS = { xp: "XP", streak: "Day Streak", plans: "Study Plans", qSets: "Question Sets", summaries: "Summaries", followers: "Followers" };
+
+  function GoalProgress({ goals, progress }) {
+    if (!goals || Object.keys(goals).length === 0) return null;
+    return (
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5, textAlign: "left" }}>
+        {Object.entries(goals).map(([k, target]) => {
+          const current = (progress || {})[k] || 0;
+          const pct = Math.min(100, Math.round((current / target) * 100));
+          return (
+            <div key={k}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: COLORS.muted, marginBottom: 2 }}>
+                <span>{GOAL_LABELS[k] || k}</span>
+                <span>{current}/{target}</span>
+              </div>
+              <div style={{ height: 4, background: COLORS.border, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? COLORS.accent : COLORS.gold, borderRadius: 4, transition: "width .5s" }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* 🎉 Newly awarded popup */}
+      {showNew && (
+        <div style={{ position: "fixed", top: 24, right: 24, zIndex: 9999, background: COLORS.surface, border: `2px solid ${COLORS.gold}`, borderRadius: 16, padding: "18px 24px", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", minWidth: 260, animation: "badgePop .5s ease both" }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>🎉</div>
+          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 15, color: COLORS.gold }}>New Achievement Unlocked!</div>
+          {newlyEarned.map(a => (
+            <div key={a.id} style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+              {a.image ? <img src={a.image} style={{ width: 28, height: 28, borderRadius: 6 }} /> : <span style={{ fontSize: 22 }}>{a.icon}</span>}
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{a.label}</span>
+            </div>
+          ))}
+          <button onClick={() => setShowNew(false)} style={{ marginTop: 12, width: "100%", background: COLORS.gold, border: "none", borderRadius: 8, padding: "7px 0", color: "#000", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Awesome! 🎯</button>
+        </div>
+      )}
+
       <div><h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800 }}>Achievements</h2><p style={{ color: COLORS.muted, marginTop: 4, fontSize: 14 }}>Earn badges by using ZuxterX consistently.</p></div>
+
+      {/* Standard badges */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 14 }}>
         {ALL_BADGES.map(b => {
           const has = earned.has(b.id);
-          return <Card key={b.id} style={{ textAlign: "center", padding: "24px 16px", border: `1px solid ${has ? COLORS.gold + "55" : COLORS.border}`, background: has ? COLORS.gold + "0a" : COLORS.surface, animation: has ? "badgePop .5s ease both" : "fadeUp .4s ease", opacity: has ? 1 : .45, filter: has ? "none" : "grayscale(1)" }}>
+          return <Card key={b.id} style={{ textAlign: "center", padding: "24px 16px", border: `1px solid ${has ? COLORS.gold + "55" : COLORS.border}`, background: has ? COLORS.gold + "0a" : COLORS.surface, opacity: has ? 1 : .45, filter: has ? "none" : "grayscale(1)", animation: has ? "badgePop .5s ease both" : "fadeUp .4s ease" }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>{b.icon}</div>
             <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: has ? COLORS.gold : COLORS.muted }}>{b.label}</div>
             <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 6, lineHeight: 1.5 }}>{b.desc}</div>
             {has && <Tag color={COLORS.gold}>Earned</Tag>}
           </Card>;
         })}
+        {/* Earned custom achievements shown alongside standard badges */}
+        {customBadges.filter(b => b && b.id).map(b => (
+          <Card key={"custom-" + b.id} style={{ textAlign: "center", padding: "24px 16px", border: `1px solid ${COLORS.gold}55`, background: COLORS.gold + "0a", animation: "badgePop .5s ease both" }}>
+            {b.image
+              ? <img src={b.image} alt={b.label} style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", margin: "0 auto 10px", display: "block", border: `2px solid ${COLORS.gold}44` }} />
+              : <div style={{ fontSize: 36, marginBottom: 10 }}>{b.icon || "🏆"}</div>
+            }
+            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: COLORS.gold }}>{b.label}</div>
+            {b.desc && <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 6, lineHeight: 1.5 }}>{b.desc}</div>}
+            <div style={{ display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap", marginTop: 6 }}>
+              {b.type === "special" && <Tag color={COLORS.gold}>⭐ Special</Tag>}
+              <Tag color={COLORS.gold}>Earned ✓</Tag>
+            </div>
+          </Card>
+        ))}
       </div>
+
+      {/* Custom / Special Achievements */}
+      {!checking && activeAchs.length > 0 && (
+        <>
+          <div>
+            <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 18, fontWeight: 700, color: COLORS.gold }}>🏆 Special Achievements</h3>
+            <p style={{ color: COLORS.muted, fontSize: 13, marginTop: 3 }}>Awarded by the ZuxterX team. Complete the goals to unlock.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 14 }}>
+            {activeAchs.map(a => {
+              const hasGoals = a.goals && Object.keys(a.goals).length > 0;
+              const isSpecial = a.type === "special";
+              // Days remaining
+              let daysLeft = null;
+              if (a.expiresAt) {
+                const diff = Math.ceil((new Date(a.expiresAt) - Date.now()) / 86400000);
+                if (diff > 0) daysLeft = diff;
+              }
+              return (
+                <Card key={a.id} style={{ textAlign: "center", padding: "22px 16px", border: `1px solid ${a.earned ? COLORS.gold + "55" : isSpecial ? COLORS.gold + "33" : COLORS.border}`, background: a.earned ? COLORS.gold + "0a" : COLORS.surface, opacity: a.earned ? 1 : 0.75, filter: a.earned ? "none" : "grayscale(0.3)", animation: a.earned ? "badgePop .5s ease both" : "fadeUp .4s ease", position: "relative" }}>
+                  {isSpecial && <div style={{ position: "absolute", top: 8, right: 8, fontSize: 13 }}>⭐</div>}
+                  {a.image ? (
+                    <img src={a.image} alt={a.label} style={{ width: 52, height: 52, borderRadius: 12, objectFit: "cover", margin: "0 auto 10px", display: "block", border: `2px solid ${a.earned ? COLORS.gold : COLORS.border}` }} />
+                  ) : (
+                    <div style={{ fontSize: 36, marginBottom: 10 }}>{a.icon}</div>
+                  )}
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 14, color: a.earned ? COLORS.gold : COLORS.muted }}>{a.label}</div>
+                  <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 5, lineHeight: 1.5 }}>{a.desc}</div>
+                  <div style={{ display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap", marginTop: 6 }}>
+                    {isSpecial && <Tag color={COLORS.gold}>⭐ Special</Tag>}
+                    {a.earned ? <Tag color={COLORS.gold}>Earned ✓</Tag> : (hasGoals ? <Tag color={COLORS.muted}>In Progress</Tag> : <Tag color={COLORS.muted}>Manual Award</Tag>)}
+                    {daysLeft !== null && !a.earned && <Tag color={daysLeft <= 3 ? COLORS.danger : COLORS.muted}>⏳ {daysLeft}d left</Tag>}
+                  </div>
+                  {!a.earned && hasGoals && <GoalProgress goals={a.goals} progress={a.progress} />}
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Past Earned (admin deleted but user keeps them) */}
+      {pastEarned.length > 0 && (
+        <>
+          <div>
+            <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 16, fontWeight: 700, color: COLORS.muted }}>📦 Past Achievements</h3>
+            <p style={{ color: COLORS.muted, fontSize: 12, marginTop: 3 }}>You earned these — they're yours forever.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 14 }}>
+            {pastEarned.map(b => (
+              <Card key={b.id} style={{ textAlign: "center", padding: "20px 14px", border: `1px solid ${COLORS.gold}44`, background: COLORS.gold + "06" }}>
+                {b.image ? <img src={b.image} style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover", margin: "0 auto 8px", display: "block" }} /> : <div style={{ fontSize: 34, marginBottom: 8 }}>{b.icon}</div>}
+                <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13, color: COLORS.gold }}>{b.label}</div>
+                <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>{b.desc}</div>
+                <Tag color={COLORS.gold}>Earned ✓</Tag>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
       <Card>
         <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
           {[{ label: "Plans", val: user.plans || 0, icon: "🗓" }, { label: "Q-Sets", val: user.qSets || 0, icon: "❓" }, { label: "Summaries", val: user.summaries || 0, icon: "📝" }, { label: "Max Streak", val: user.maxStreak || 0, icon: "🔥" }, { label: "Total XP", val: user.xp || 0, icon: "⭐" }].map(s => (
@@ -1954,7 +2884,10 @@ function LeaderboardPage({ currentUser }) {
                   <span style={{ fontSize: 20, width: 28, textAlign: "center" }}>{medals[i] || `#${i + 1}`}</span>
                   <Avatar src={u.avatar} name={u.name} size={32} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: isMe ? COLORS.accent : COLORS.text }}>{u.name} {isMe && <Tag color={COLORS.accent}>You</Tag>}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: isMe ? COLORS.accent : COLORS.text, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {u.name} {isMe && <Tag color={COLORS.accent}>You</Tag>}
+                      {(u.specialBadges || []).length > 0 && <SpecialBadgeRow badges={u.specialBadges} />}
+                    </div>
                     <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>🔥 {u.streak} streak · 🏅 {(u.badges || []).length} badges</div>
                   </div>
                   <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 18, color: COLORS.gold }}>{u.xp} <span style={{ fontSize: 11, fontWeight: 400, color: COLORS.muted }}>XP</span></div>
@@ -2029,8 +2962,17 @@ export default function App() {
 
   const splineBg = (
     <>
-      <div style={{ position: "fixed", inset: 0, zIndex: -2, opacity: user && !adminUser ? 0.45 : 1, transition: "opacity 1.5s ease", pointerEvents: "auto" }}>
-        <iframe src="https://my.spline.design/retrofuturisticcircuitloop-26VXgZZN9YuD1DemISWkC4US/" frameBorder="0" width="100%" height="100%" style={{ background: 'transparent' }} allow="autoplay; fullscreen" />
+      <div style={{ position: "fixed", inset: 0, zIndex: -2, opacity: user && !adminUser ? 0.45 : 1, transition: "opacity 1.5s ease", pointerEvents: "none" }}>
+        <iframe
+          src="https://my.spline.design/retrofuturisticcircuitloop-26VXgZZN9YuD1DemISWkC4US/"
+          frameBorder="0"
+          width="100%"
+          height="100%"
+          loading="lazy"
+          style={{ background: 'transparent', border: 'none' }}
+          allow="autoplay"
+          title="Background animation"
+        />
       </div>
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", background: `radial-gradient(circle at center, transparent ${user && !adminUser ? '40%' : '0%'}, #05080f ${user && !adminUser ? '150%' : '85%'})`, zIndex: -1 }} />
     </>
@@ -2048,7 +2990,7 @@ export default function App() {
   };
 
   function renderPage() {
-    if (active === "profile") return <ProfilePage user={user} onUserUpdate={handleUserUpdate} onBack={goBack} />;
+    if (active === "profile") return <ProfilePage user={user} onUserUpdate={handleUserUpdate} onBack={goBack} onLogout={handleLogout} />;
     if (active === "connect") return <ZuxterConnect user={user} onUserUpdate={handleUserUpdate} />;
     if (active === "support") return <SupportPage user={user} />;
     if (active === "messages") return <MessagingPage user={user} />;
@@ -2177,15 +3119,54 @@ export default function App() {
 
 function MessagingPage({ user, openWithId = null, onBack }) {
   const [inbox, setInbox] = useState([]);
-  const [activeChat, setActiveChat] = useState(null); // { otherId, otherName, otherAvatar }
+  const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [msgText, setMsgText] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [searchUser, setSearchUser] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [openMsgMenu, setOpenMsgMenu] = useState(null); // msg._id or "header" or "thread:{id}"
   const bottomRef = useRef(null);
   const pollRef = useRef(null);
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handler = () => setOpenMsgMenu(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
+  const authHdr = { "Authorization": "Bearer " + window._authToken };
+  const jsonHdr = { "Authorization": "Bearer " + window._authToken, "Content-Type": "application/json" };
+
+  async function deleteConversation(otherId) {
+    await fetch(`${BASE_URL}/msg/conversation/${otherId}`, { method: "DELETE", headers: authHdr });
+    setActiveChat(null);
+    setMessages([]);
+    loadInbox();
+  }
+
+  async function deleteMessage(msgId) {
+    try {
+      await fetch(`${BASE_URL}/msg/delete/${msgId}`, { method: "DELETE", headers: authHdr });
+      // Refetch from server so deletedFor filter applies properly
+      if (activeChat) {
+        const res = await fetch(`${BASE_URL}/msg/conversation/${activeChat.otherId}`, { headers: authHdr });
+        if (res.ok) setMessages(await res.json());
+      }
+    } catch {
+      // Fallback: optimistic remove
+      setMessages(prev => prev.filter(m => m._id !== msgId));
+    }
+    setOpenMsgMenu(null);
+  }
+
+  async function unsendMessage(msgId) {
+    await fetch(`${BASE_URL}/msg/unsend/${msgId}`, { method: "DELETE", headers: authHdr });
+    setMessages(prev => prev.filter(m => m._id !== msgId));
+    setOpenMsgMenu(null);
+  }
 
   async function loadInbox() {
     try {
@@ -2263,9 +3244,10 @@ function MessagingPage({ user, openWithId = null, onBack }) {
 
   async function searchUsers(q) {
     if (!q.trim()) { setSearchResults([]); return; }
-    // Search from inbox first, then we show a hint
-    const filtered = inbox.filter(i => i.otherName.toLowerCase().includes(q.toLowerCase()));
-    setSearchResults(filtered.map(i => ({ id: i.otherId, name: i.otherName, avatar: i.otherAvatar })));
+    try {
+      const res = await fetch(`${BASE_URL}/connect/search?q=${encodeURIComponent(q)}`, { headers: { "Authorization": "Bearer " + window._authToken } });
+      if (res.ok) setSearchResults(await res.json());
+    } catch { }
   }
 
   const isMobile = window.innerWidth <= 640;
@@ -2296,31 +3278,76 @@ function MessagingPage({ user, openWithId = null, onBack }) {
               />
             </div>
             <div style={{ flex: 1, overflowY: "auto" }}>
-              {inbox.length === 0 && (
-                <div style={{ padding: 24, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
-                  No conversations yet.<br />Follow someone and start chatting!
-                </div>
+              {searchUser.trim() ? (
+                <>
+                  {searchResults.length === 0 ? (
+                    <div style={{ padding: 24, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>No users found.</div>
+                  ) : (
+                    searchResults.map(u => (
+                      <div key={u.id} onClick={() => { openChat(u.id, u.name, u.avatar); setSearchUser(""); setSearchResults([]); }}
+                        style={{ display: "flex", gap: 12, padding: "12px 14px", cursor: "pointer", background: "transparent", borderBottom: `1px solid ${COLORS.border}`, transition: "background .15s" }}
+                        onMouseOver={e => e.currentTarget.style.background = COLORS.surfaceAlt}
+                        onMouseOut={e => e.currentTarget.style.background = "transparent"}>
+                        <Avatar src={u.avatar} name={u.name} size={36} />
+                        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                          <span style={{ fontWeight: 600, fontSize: 13, color: COLORS.text }}>{u.name}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
+              ) : (
+                <>
+                  {inbox.length === 0 && (
+                    <div style={{ padding: 24, textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
+                      No conversations yet.<br />Follow someone and start chatting!
+                    </div>
+                  )}
+                  {inbox.map(thread => {
+                    const threadMenuKey = `thread:${thread.otherId}`;
+                    return (
+                      <div key={thread.otherId} style={{ position: "relative", borderBottom: `1px solid ${COLORS.border}` }}>
+                        <div onClick={() => openChat(thread.otherId, thread.otherName, thread.otherAvatar)}
+                          style={{ display: "flex", gap: 12, padding: "12px 14px", cursor: "pointer", background: activeChat?.otherId === thread.otherId ? COLORS.accent + "12" : "transparent", borderLeft: activeChat?.otherId === thread.otherId ? `3px solid ${COLORS.accent}` : "3px solid transparent", transition: "background .15s", alignItems: "center" }}
+                          onMouseOver={e => e.currentTarget.style.background = COLORS.surfaceAlt}
+                          onMouseOut={e => e.currentTarget.style.background = activeChat?.otherId === thread.otherId ? COLORS.accent + "12" : "transparent"}>
+                          <div style={{ position: "relative", flexShrink: 0 }}>
+                            <Avatar src={thread.otherAvatar} name={thread.otherName} size={42} />
+                            {thread.unread > 0 && <div style={{ position: "absolute", top: -3, right: -3, background: COLORS.accent, color: "#000", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{thread.unread}</div>}
+                          </div>
+                          <div style={{ flex: 1, overflow: "hidden" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontWeight: thread.unread > 0 ? 700 : 500, fontSize: 13, color: thread.unread > 0 ? COLORS.text : COLORS.muted }}>{thread.otherName}</span>
+                              <span style={{ fontSize: 10, color: COLORS.muted }}>{timeAgo(thread.lastTime)}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: COLORS.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
+                              {thread.isMine ? "You: " : ""}{thread.lastText}
+                            </div>
+                          </div>
+                          {/* 3-dot for thread */}
+                          <div style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setOpenMsgMenu(v => v === threadMenuKey ? null : threadMenuKey)}
+                              style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", fontSize: 16, padding: "4px 6px", borderRadius: 6, lineHeight: 1, opacity: 0.7 }}
+                              title="Delete chat"
+                            >⋮</button>
+                            {openMsgMenu === threadMenuKey && (
+                              <div style={{ position: "absolute", right: 0, top: "110%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, minWidth: 190, zIndex: 200, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", overflow: "hidden" }}>
+                                <button
+                                  onClick={() => { setOpenMsgMenu(null); if (window.confirm("Yeh chat sirf aapke liye delete hogi. Dusre user ko abhi bhi dikhegi.")) deleteConversation(thread.otherId); }}
+                                  style={{ width: "100%", padding: "11px 16px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", textAlign: "left", fontSize: 13, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}
+                                  onMouseOver={e => e.currentTarget.style.background = COLORS.danger + "15"}
+                                  onMouseOut={e => e.currentTarget.style.background = "none"}
+                                >🗑 Delete Chat</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               )}
-              {inbox.map(thread => (
-                <div key={thread.otherId} onClick={() => openChat(thread.otherId, thread.otherName, thread.otherAvatar)}
-                  style={{ display: "flex", gap: 12, padding: "12px 14px", cursor: "pointer", background: activeChat?.otherId === thread.otherId ? COLORS.accent + "12" : "transparent", borderBottom: `1px solid ${COLORS.border}`, borderLeft: activeChat?.otherId === thread.otherId ? `3px solid ${COLORS.accent}` : "3px solid transparent", transition: "background .15s" }}
-                  onMouseOver={e => e.currentTarget.style.background = COLORS.surfaceAlt}
-                  onMouseOut={e => e.currentTarget.style.background = activeChat?.otherId === thread.otherId ? COLORS.accent + "12" : "transparent"}>
-                  <div style={{ position: "relative" }}>
-                    <Avatar src={thread.otherAvatar} name={thread.otherName} size={42} />
-                    {thread.unread > 0 && <div style={{ position: "absolute", top: -3, right: -3, background: COLORS.accent, color: "#000", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{thread.unread}</div>}
-                  </div>
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: thread.unread > 0 ? 700 : 500, fontSize: 13, color: thread.unread > 0 ? COLORS.text : COLORS.muted }}>{thread.otherName}</span>
-                      <span style={{ fontSize: 10, color: COLORS.muted }}>{timeAgo(thread.lastTime)}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: COLORS.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
-                      {thread.isMine ? "You: " : ""}{thread.lastText}
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -2335,9 +3362,29 @@ function MessagingPage({ user, openWithId = null, onBack }) {
                   <button onClick={() => setActiveChat(null)} style={{ background: "none", border: "none", color: COLORS.accent, cursor: "pointer", fontSize: 18, padding: "0 4px" }}>←</button>
                 )}
                 <Avatar src={activeChat.otherAvatar} name={activeChat.otherName} size={36} />
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Syne',sans-serif" }}>{activeChat.otherName || "Loading…"}</div>
                   <div style={{ fontSize: 11, color: COLORS.accent }}>🔒 End-to-end encrypted</div>
+                </div>
+                {/* 3-dot menu for header */}
+                <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => setOpenMsgMenu(v => v === "header" ? null : "header")}
+                    style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", fontSize: 20, padding: "4px 8px", borderRadius: 8, lineHeight: 1 }}
+                    title="More options"
+                  >⋮</button>
+                  {openMsgMenu === "header" && (
+                    <div style={{ position: "absolute", right: 0, top: "110%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, minWidth: 180, zIndex: 99, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", overflow: "hidden" }}>
+                      <button
+                        onClick={() => { if (window.confirm("Yeh chat sirf aapke liye delete hogi. Dusre user ko abhi bhi dikhegi.")) { deleteConversation(activeChat.otherId); setOpenMsgMenu(null); } }}
+                        style={{ width: "100%", padding: "11px 16px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", textAlign: "left", fontSize: 13, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}
+                        onMouseOver={e => e.currentTarget.style.background = COLORS.danger + "15"}
+                        onMouseOut={e => e.currentTarget.style.background = "none"}
+                      >
+                        🗑 Delete Chat (my side only)
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2349,17 +3396,54 @@ function MessagingPage({ user, openWithId = null, onBack }) {
                   <div style={{ textAlign: "center", color: COLORS.muted, padding: "40px 0", fontSize: 13 }}>No messages yet. Say hi! 👋</div>
                 ) : messages.map(m => {
                   const isMe = m.fromId === user.id;
+                  const menuKey = `msg:${m._id}`;
                   return (
-                    <div key={m._id} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end" }}>
+                    <div key={m._id} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", gap: 8, alignItems: "flex-end", position: "relative" }}
+                      onMouseLeave={() => setOpenMsgMenu(v => v === menuKey ? null : v)}>
                       {!isMe && <Avatar src={m.fromAvatar} name={m.fromName} size={28} />}
                       <div style={{ maxWidth: "70%", display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", gap: 2 }}>
-                        <div style={{ background: isMe ? COLORS.accent : COLORS.surfaceAlt, color: isMe ? "#000" : COLORS.text, borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "9px 14px", fontSize: 14, lineHeight: 1.5, fontFamily: "'DM Sans',sans-serif", wordBreak: "break-word" }}>
-                          {m.text}
+                        <div style={{ background: isMe ? COLORS.accent : COLORS.surfaceAlt, color: isMe ? "#000" : COLORS.text, borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "9px 14px", fontSize: 14, lineHeight: 1.5, fontFamily: "'DM Sans',sans-serif", wordBreak: "break-word", position: "relative" }}>
+                          {m.type === "post_share" ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.8 }}>Shared a post</div>
+                              {m.text && <div>{m.text}</div>}
+                              <div onClick={() => window.location.href = `/post/${m.postId}`} style={{ background: isMe ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.05)", border: isMe ? "1px solid rgba(0,0,0,0.1)" : `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, cursor: "pointer", fontSize: 13 }}>
+                                <div style={{ fontStyle: "italic", opacity: 0.9 }}>{m.postPreview || "View post..."}</div>
+                                <div style={{ fontSize: 11, marginTop: 6, fontWeight: 700, textTransform: "uppercase" }}>Click to view post</div>
+                              </div>
+                            </div>
+                          ) : m.text}
                         </div>
                         <div style={{ fontSize: 10, color: COLORS.muted, display: "flex", alignItems: "center", gap: 4 }}>
                           {timeAgo(m.createdAt)}
                           {isMe && <span style={{ color: m.seen ? COLORS.blue : COLORS.muted }}>{m.seen ? "✓✓" : "✓"}</span>}
                         </div>
+                      </div>
+                      {/* 3-dot menu button */}
+                      <div style={{ position: "relative", alignSelf: "center", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setOpenMsgMenu(v => v === menuKey ? null : menuKey)}
+                          style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", fontSize: 16, padding: "2px 5px", borderRadius: 6, opacity: 0.6, lineHeight: 1 }}
+                          title="Message options"
+                        >⋮</button>
+                        {openMsgMenu === menuKey && (
+                          <div style={{ position: "absolute", [isMe ? "right" : "left"]: 0, bottom: "120%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, minWidth: 170, zIndex: 99, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", overflow: "hidden" }}>
+                            {isMe && (
+                              <button
+                                onClick={() => { if (window.confirm("Unsend this message? It will be removed for everyone.")) unsendMessage(m._id); }}
+                                style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", textAlign: "left", fontSize: 13, fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${COLORS.border}` }}
+                                onMouseOver={e => e.currentTarget.style.background = COLORS.danger + "15"}
+                                onMouseOut={e => e.currentTarget.style.background = "none"}
+                              >↩ Unsend (everyone)</button>
+                            )}
+                            <button
+                              onClick={() => deleteMessage(m._id)}
+                              style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", color: COLORS.muted, cursor: "pointer", textAlign: "left", fontSize: 13, fontFamily: "'DM Sans',sans-serif", fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}
+                              onMouseOver={e => e.currentTarget.style.background = COLORS.surfaceAlt}
+                              onMouseOut={e => e.currentTarget.style.background = "none"}
+                            >🗑 Delete (my side only)</button>
+                          </div>
+                        )}
                       </div>
                       {isMe && <Avatar src={user.avatar} name={user.name} size={28} />}
                     </div>
@@ -2517,7 +3601,7 @@ function MobileBottomNav({ active, setActive }) {
     { id: "planner", icon: "🗓", label: "Plan" },
     { id: "questions", icon: "❓", label: "Questions" },
     { id: "summary", icon: "📝", label: "Summary" },
-    { id: "connect", icon: "🌐", label: "Feed" },
+    { id: "connect", icon: "🌐", label: "Connect" },
     { id: "badges", icon: "🏅", label: "Badges" },
     { id: "leaderboard", icon: "🏆", label: "Rank" },
   ];
