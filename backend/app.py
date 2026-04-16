@@ -373,7 +373,19 @@ def login():
             # Lift ban automatically
             users.update_one({"_id": u["_id"]}, {"$set": {"banned": False, "banExpires": None}})
         else:
-            return jsonify({"msg": "Your account has been suspended. Contact support."}), 403
+            msg = "Your account has been suspended. Contact support."
+            if expires:
+                diff = expires - datetime.utcnow()
+                days = diff.days
+                hours = diff.seconds // 3600
+                if days > 0:
+                    msg = f"Your account has been suspended. Ban lifts in {days} day(s) and {hours} hour(s)."
+                elif hours > 0:
+                    msg = f"Your account has been suspended. Ban lifts in {hours} hour(s)."
+                else:
+                    minutes = diff.seconds // 60
+                    msg = f"Your account has been suspended. Ban lifts in {minutes} minute(s)."
+            return jsonify({"msg": msg}), 403
     users.update_one({"_id": u["_id"]}, {"$set": {"lastSeen": datetime.utcnow().isoformat()}})
     token = create_access_token(identity=str(u["_id"]))
     # Clean up ghost follower/following IDs on every login

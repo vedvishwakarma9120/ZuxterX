@@ -198,7 +198,7 @@ function Card({ children, style = {}, glow = false }) {
 }
 
 function Btn({ children, onClick, variant = "primary", disabled = false, style = {} }) {
-  const base = { border: "none", borderRadius: 10, padding: "10px 22px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, cursor: disabled ? "not-allowed" : "pointer", transition: "all .2s", opacity: disabled ? .5 : 1, textShadow: "0 0 3px rgba(255,255,255,0.3)", ...style };
+  const base = { display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, padding: "10px 22px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, cursor: disabled ? "not-allowed" : "pointer", transition: "all .2s", opacity: disabled ? .5 : 1, textShadow: "0 0 3px rgba(255,255,255,0.3)", ...style };
   const variants = { primary: { background: COLORS.accent, color: "#000", boxShadow: `0 0 15px ${COLORS.accent}88` }, ghost: { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accent}`, boxShadow: `0 0 10px ${COLORS.accentDim}, inset 0 0 10px ${COLORS.accentDim}` }, danger: { background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44`, boxShadow: `0 0 10px ${COLORS.danger}44` }, admin: { background: COLORS.admin + "22", color: COLORS.admin, border: `1px solid ${COLORS.admin}44`, boxShadow: `0 0 10px ${COLORS.admin}44` } };
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled} onMouseOver={e => !disabled && (e.currentTarget.style.filter = "brightness(1.2)")} onMouseOut={e => e.currentTarget.style.filter = "brightness(1)"}>{children}</button>;
 }
@@ -473,7 +473,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
   }
 
   return (
-    <div className="bg-black/60 backdrop-blur-md text-white selection:bg-white/30 selection:text-white font-sans tracking-wide" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyItems: "center" }}>
+    <div className="bg-black/60 backdrop-blur-md text-white selection:bg-white/30 selection:text-white font-sans tracking-wide" style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
 
       <button onClick={() => setShowForm(false)} className="absolute top-6 right-8 bg-transparent border-none text-gray-400 cursor-pointer text-3xl z-50 transition-all hover:text-white hover:scale-110">✕</button>
 
@@ -1924,6 +1924,9 @@ function AdminPanel({ adminEmail, onLogout }) {
   const [editXp, setEditXp] = useState("");
   const [editStreak, setEditStreak] = useState("");
   const [badgeInput, setBadgeInput] = useState("first_plan");
+  const [banDuration, setBanDuration] = useState("");
+  const [showBanConfirm, setShowBanConfirm] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [guestTickets, setGuestTickets] = useState([]);
   const [customAchievements, setCustomAchievements] = useState([]);
@@ -1989,13 +1992,16 @@ function AdminPanel({ adminEmail, onLogout }) {
     setSelected(u); setMsg(""); setErr("");
     setEditName(u.name); setEditEmail(u.email);
     setEditXp(String(u.xp)); setEditStreak(String(u.streak));
+    setShowBanConfirm(false);
   }
 
-  async function action(path, method = "POST", body = null) {
+  async function action(path, method = "POST", body = null, actionName = "generic") {
+    setLoadingAction(actionName);
     setMsg(""); setErr("");
     const { ok, data } = await adminFetch(path, method, body);
     if (ok) { setMsg(data.msg || "Done"); loadUsers(); if (selected) setSelected(prev => ({ ...prev, ...(data.user || {}) })); }
     else setErr(data.msg || "Error");
+    setLoadingAction(null);
   }
 
   async function replyTicket(ticketId, reply) {
@@ -2143,12 +2149,14 @@ function AdminPanel({ adminEmail, onLogout }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>XP</label><input value={editXp} onChange={e => setEditXp(e.target.value)} type="number" style={panelInput} /></div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><label style={{ fontSize: 11, color: COLORS.muted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Streak</label><input value={editStreak} onChange={e => setEditStreak(e.target.value)} type="number" style={panelInput} /></div>
             </div>
-            <Btn variant="admin" onClick={() => action(`/admin/user/${selected.id}/update`, "POST", { name: editName, email: editEmail, xp: parseInt(editXp), streak: parseInt(editStreak) })}>💾 Save Changes</Btn>
+            <Btn disabled={loadingAction === "save"} variant="admin" onClick={() => action(`/admin/user/${selected.id}/update`, "POST", { name: editName, email: editEmail, xp: parseInt(editXp), streak: parseInt(editStreak) }, "save")}>
+              {loadingAction === "save" ? <><BtnSpinner /> Saving…</> : "💾 Save Changes"}
+            </Btn>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-              <Btn variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-streak`)}>Reset Streak</Btn>
-              <Btn variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-xp`)}>Reset XP</Btn>
-              <Btn variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-all`)}>Reset All</Btn>
+              <Btn disabled={loadingAction === "resetStreak"} variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-streak`, "POST", null, "resetStreak")}>{loadingAction === "resetStreak" ? <BtnSpinner /> : "Reset Streak"}</Btn>
+              <Btn disabled={loadingAction === "resetXp"} variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-xp`, "POST", null, "resetXp")}>{loadingAction === "resetXp" ? <BtnSpinner /> : "Reset XP"}</Btn>
+              <Btn disabled={loadingAction === "resetAll"} variant="ghost" style={{ fontSize: 12, padding: "8px 10px" }} onClick={() => action(`/admin/user/${selected.id}/reset-all`, "POST", null, "resetAll")}>{loadingAction === "resetAll" ? <BtnSpinner /> : "Reset All"}</Btn>
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
@@ -2158,18 +2166,31 @@ function AdminPanel({ adminEmail, onLogout }) {
                   {ALL_BADGES.map(b => <option key={b.id} value={b.id}>{b.icon} {b.label}</option>)}
                 </select>
               </div>
-              <Btn variant="admin" style={{ fontSize: 12, padding: "9px 14px" }} onClick={() => action(`/admin/user/${selected.id}/give-badge`, "POST", { badge_id: badgeInput })}>Give</Btn>
-              <Btn variant="danger" style={{ fontSize: 12, padding: "9px 14px" }} onClick={() => action(`/admin/user/${selected.id}/remove-badge`, "POST", { badge_id: badgeInput })}>Remove</Btn>
+              <Btn disabled={loadingAction === "give"} variant="admin" style={{ fontSize: 12, padding: "9px 14px", display: "flex", gap: 5 }} onClick={() => action(`/admin/user/${selected.id}/give-badge`, "POST", { badge_id: badgeInput }, "give")}>{loadingAction === "give" ? <BtnSpinner /> : "Give"}</Btn>
+              <Btn disabled={loadingAction === "remove"} variant="danger" style={{ fontSize: 12, padding: "9px 14px", display: "flex", gap: 5 }} onClick={() => action(`/admin/user/${selected.id}/remove-badge`, "POST", { badge_id: badgeInput }, "remove")}>{loadingAction === "remove" ? <BtnSpinner /> : "Remove"}</Btn>
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <Btn variant={selected.banned ? "ghost" : "danger"} onClick={() => action(`/admin/user/${selected.id}/ban`, "POST", { banned: !selected.banned })} style={{ flex: 1 }}>
-                {selected.banned ? "✅ Unban User" : "🚫 Ban User"}
-              </Btn>
-              <Btn variant="danger" onClick={() => { if (window.confirm(`Delete ${selected.name}?`)) action(`/admin/user/${selected.id}/delete`, "DELETE"); }} style={{ flex: 1 }}>
-                🗑 Delete User
-              </Btn>
-            </div>
+            {showBanConfirm && !selected.banned ? (
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", background: COLORS.danger + "11", padding: 10, borderRadius: 10, border: `1px solid ${COLORS.danger}33` }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 11, color: COLORS.danger, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Ban Duration (Days)</label>
+                  <input value={banDuration} onChange={e => setBanDuration(e.target.value)} type="number" placeholder="7" style={{ ...panelInput, borderColor: COLORS.danger + "55" }} />
+                </div>
+                <Btn disabled={loadingAction === "ban"} variant="danger" onClick={() => { action(`/admin/user/${selected.id}/ban`, "POST", { banned: true, duration_seconds: (parseFloat(banDuration) || 7) * 86400 }, "ban"); setShowBanConfirm(false); }} style={{ flex: 1, fontSize: 12, padding: "9px 12px" }}>
+                  {loadingAction === "ban" ? <><BtnSpinner /> Processing…</> : "Confirm Ban"}
+                </Btn>
+                <div onClick={() => setShowBanConfirm(false)} style={{ padding: "9px 12px", color: COLORS.muted, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Outfit',sans-serif" }}>Cancel</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn disabled={loadingAction === "ban"} variant={selected.banned ? "ghost" : "danger"} onClick={() => { if (selected.banned) { action(`/admin/user/${selected.id}/ban`, "POST", { banned: false }, "ban"); } else { setShowBanConfirm(true); setBanDuration(""); } }} style={{ flex: 1 }}>
+                  {loadingAction === "ban" ? <><BtnSpinner /> Processing…</> : (selected.banned ? "✅ Unban User" : "🚫 Ban User")}
+                </Btn>
+                <Btn disabled={loadingAction === "delete"} variant="danger" onClick={() => { if (window.confirm(`Delete ${selected.name}?`)) action(`/admin/user/${selected.id}/delete`, "DELETE", null, "delete"); }} style={{ flex: 1 }}>
+                  {loadingAction === "delete" ? <><BtnSpinner /> Deleting…</> : "🗑 Delete User"}
+                </Btn>
+              </div>
+            )}
 
             {/* Discord-style Roles */}
             <div style={{ borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
@@ -3026,14 +3047,25 @@ export default function App() {
 
   const splineBg = (
     <>
-      <div style={{ position: "fixed", inset: 0, zIndex: -2, opacity: user && !adminUser ? 0.45 : 1, transition: "opacity 1.5s ease", pointerEvents: "none" }}>
+      <style>{`
+        .spline-bg-wrap iframe { width: 100%; height: 100%; }
+        @media (max-width: 768px) {
+          .spline-bg-wrap iframe {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 300vw !important;
+            height: 100vh !important;
+            transform: translateX(-29%);
+          }
+        }
+      `}</style>
+      <div className="spline-bg-wrap" style={{ position: "fixed", inset: 0, zIndex: -2, opacity: user && !adminUser ? 0.45 : 1, transition: "opacity 1.5s ease", pointerEvents: "none", overflow: "hidden" }}>
         <iframe
           src="https://my.spline.design/retrofuturisticcircuitloop-26VXgZZN9YuD1DemISWkC4US/"
           frameBorder="0"
-          width="100%"
-          height="100%"
           loading="lazy"
-          style={{ background: 'transparent', border: 'none' }}
+          style={{ background: 'transparent', border: 'none', width: "100%", height: "100%" }}
           allow="autoplay"
           title="Background animation"
         />
