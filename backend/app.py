@@ -1,10 +1,12 @@
 import os
 import re
-import random
+import time
+import secrets
 from datetime import datetime, date, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from markupsafe import escape as html_escape
 import requests as requests_lib
 from bson import ObjectId
 
@@ -29,17 +31,20 @@ ADMIN_PASSWORD   = os.getenv("ADMIN_PASSWORD", "")
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(app, resources={r"/*": {"origins": ["https://zuxter-x.vercel.app", "http://localhost:5173"]}}, supports_credentials=True)
 
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     return response
 
 app.config["JWT_SECRET_KEY"] = JWT_SECRET
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
 
 client  = MongoClient(MONGO_URI)
@@ -51,7 +56,58 @@ custom_achievements = db["custom_achievements"]
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 
-otp_store = {}
+otp_store = {}  # {email: {"otp": "...", "created": timestamp, "attempts": 0}}
+
+# ── Rate limiter (in-memory) ─────────────────────────────────────────────────
+_rate_limits = {}
+
+def is_rate_limited(key, max_requests, window_seconds):
+    """Simple in-memory rate limiter. Returns True if rate limit exceeded."""
+    now = time.time()
+    if key not in _rate_limits:
+        _rate_limits[key] = []
+    _rate_limits[key] = [t for t in _rate_limits[key] if now - t < window_seconds]
+    if len(_rate_limits[key]) >= max_requests:
+        return True
+    _rate_limits[key].append(now)
+    return False
+
+# ── OTP helpers ──────────────────────────────────────────────────────────────
+OTP_EXPIRY_SECONDS = 300   # 5 minutes
+OTP_MAX_ATTEMPTS   = 5
+
+def store_otp(email, otp):
+    otp_store[email] = {"otp": otp, "created": time.time(), "attempts": 0}
+
+def verify_otp_code(email, submitted_otp):
+    """Verify OTP with expiry and attempt limiting. Returns (ok, message)."""
+    entry = otp_store.get(email)
+    if not entry:
+        return False, "OTP expired or not found. Please resend."
+    if time.time() - entry["created"] > OTP_EXPIRY_SECONDS:
+        del otp_store[email]
+        return False, "OTP expired. Please request a new one."
+    if entry["attempts"] >= OTP_MAX_ATTEMPTS:
+        del otp_store[email]
+        return False, "Too many failed attempts. Please request a new OTP."
+    entry["attempts"] += 1
+    if submitted_otp != entry["otp"]:
+        return False, "Invalid OTP. Please try again."
+    del otp_store[email]
+    return True, "OK"
+
+# ── Password validator ───────────────────────────────────────────────────────
+def validate_password(password):
+    """Enforce strong password requirements. Returns error message or None."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters."
+    if not re.search(r'[A-Z]', password):
+        return "Password must include an uppercase letter."
+    if not re.search(r'[a-z]', password):
+        return "Password must include a lowercase letter."
+    if not re.search(r'[0-9]', password):
+        return "Password must include a number."
+    return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -86,6 +142,7 @@ def serialize_user(u):
         "roles":        u.get("roles", []),
         "bio":          u.get("bio", ""),
         "messagePrivacy": u.get("messagePrivacy", "Everyone"),
+        "banExpires":   u.get("banExpires", None),
     }
 
 # ── Helper: purge ghost IDs from a user's followers/following ────────────────
@@ -139,9 +196,10 @@ def require_admin():
         return None, False
     token = auth[len("AdminBearer "):]
     try:
-        email, pwd = token.split("::", 1)
-        if email.lower() in ADMIN_EMAILS and pwd == ADMIN_PASSWORD:
-            return email.lower(), True
+        from flask_jwt_extended import decode_token
+        decoded = decode_token(token)
+        if decoded.get("is_admin") and decoded.get("sub") in ADMIN_EMAILS:
+            return decoded["sub"], True
     except Exception:
         pass
     return None, False
@@ -211,8 +269,10 @@ def send_otp():
         return jsonify({"msg": "Invalid email address"}), 400
     if users.find_one({"email": email}):
         return jsonify({"msg": "User already exists with this email"}), 400
-    otp = str(random.randint(100000, 999999))
-    otp_store[email] = otp
+    if is_rate_limited(f"otp:{email}", 3, 300):
+        return jsonify({"msg": "Too many OTP requests. Please wait a few minutes."}), 429
+    otp = str(secrets.randbelow(900000) + 100000)
+    store_otp(email, otp)
     try:
         html_content = f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;
@@ -220,7 +280,7 @@ def send_otp():
                         padding:36px 32px;border:1px solid #1f2530;">
               <h2 style="color:#00e5a0;font-size:26px;margin-bottom:4px;">ZuxterX</h2>
               <p style="color:#6b7585;font-size:13px;margin-bottom:28px;">AI Study Platform</p>
-              <p style="font-size:15px;">Hi <strong>{name}</strong>,</p>
+              <p style="font-size:15px;">Hi <strong>{html_escape(name)}</strong>,</p>
               <p style="font-size:14px;color:#6b7585;margin-top:8px;">Your verification code:</p>
               <div style="text-align:center;margin:28px 0;">
                 <span style="font-size:40px;font-weight:900;letter-spacing:10px;color:#00e5a0;">{otp}</span>
@@ -243,15 +303,11 @@ def send_otp():
         res = requests_lib.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
             print("BREVO ERROR:", res.text)
-            try:
-                err_msg = res.json().get("message", res.text)
-            except:
-                err_msg = res.text
-            return jsonify({"msg": f"Brevo Error: {err_msg}"}), 500
+            return jsonify({"msg": "Failed to send email. Please try again."}), 500
             
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": f"Exception: {str(e)}"}), 500
+        return jsonify({"msg": "Failed to send email. Please try again."}), 500
     return jsonify({"msg": "OTP sent to your email"})
 
 
@@ -264,12 +320,12 @@ def verify_otp():
     otp      = data.get("otp", "").strip()
     if not all([name, email, password, otp]):
         return jsonify({"msg": "All fields required"}), 400
-    stored = otp_store.get(email)
-    if not stored:
-        return jsonify({"msg": "OTP expired. Please resend."}), 400
-    if otp != stored:
-        return jsonify({"msg": "Invalid OTP. Please try again."}), 400
-    del otp_store[email]
+    pwd_err = validate_password(password)
+    if pwd_err:
+        return jsonify({"msg": pwd_err}), 400
+    otp_ok, otp_msg = verify_otp_code(email, otp)
+    if not otp_ok:
+        return jsonify({"msg": otp_msg}), 400
     if users.find_one({"email": email}):
         return jsonify({"msg": "User already exists"}), 400
     users.insert_one({
@@ -303,11 +359,21 @@ def login():
     password = data.get("password", "")
     if not email or not password:
         return jsonify({"msg": "Email and password required"}), 400
+    # Rate limit: max 5 login attempts per IP per minute
+    client_ip = request.remote_addr or "unknown"
+    if is_rate_limited(f"login:{client_ip}", 5, 60):
+        return jsonify({"msg": "Too many login attempts. Please wait a minute."}), 429
     u = users.find_one({"email": email})
     if not u or not check_password_hash(u["password"], password):
         return jsonify({"msg": "Invalid email or password"}), 401
+    # Check for temporary ban expiry
     if u.get("banned"):
-        return jsonify({"msg": "Your account has been suspended. Contact support."}), 403
+        expires = u.get("banExpires")
+        if expires and datetime.utcnow() > expires:
+            # Lift ban automatically
+            users.update_one({"_id": u["_id"]}, {"$set": {"banned": False, "banExpires": None}})
+        else:
+            return jsonify({"msg": "Your account has been suspended. Contact support."}), 403
     users.update_one({"_id": u["_id"]}, {"$set": {"lastSeen": datetime.utcnow().isoformat()}})
     token = create_access_token(identity=str(u["_id"]))
     # Clean up ghost follower/following IDs on every login
@@ -327,8 +393,10 @@ def forgot_password_otp():
     if not u:
         return jsonify({"msg": "No account found with this email"}), 404
 
-    otp = str(random.randint(100000, 999999))
-    otp_store[email] = otp
+    if is_rate_limited(f"otp:{email}", 3, 300):
+        return jsonify({"msg": "Too many OTP requests. Please wait a few minutes."}), 429
+    otp = str(secrets.randbelow(900000) + 100000)
+    store_otp(email, otp)
     try:
         html_content = f"""
             <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;
@@ -336,7 +404,7 @@ def forgot_password_otp():
                         padding:36px 32px;border:1px solid #1f2530;">
               <h2 style="color:#00e5a0;font-size:26px;margin-bottom:4px;">ZuxterX</h2>
               <p style="color:#6b7585;font-size:13px;margin-bottom:28px;">Password Reset Request</p>
-              <p style="font-size:15px;">Hi {u.get('name', 'there')},</p>
+              <p style="font-size:15px;">Hi {html_escape(u.get('name', 'there'))},</p>
               <p style="font-size:14px;color:#6b7585;margin-top:8px;">Your password reset code:</p>
               <div style="text-align:center;margin:28px 0;">
                 <span style="font-size:40px;font-weight:900;letter-spacing:10px;color:#00e5a0;">{otp}</span>
@@ -359,15 +427,11 @@ def forgot_password_otp():
         res = requests_lib.post("https://api.brevo.com/v3/smtp/email", json=payload, headers=headers)
         if res.status_code >= 400:
             print("BREVO ERROR:", res.text)
-            try:
-                err_msg = res.json().get("message", res.text)
-            except:
-                err_msg = res.text
-            return jsonify({"msg": f"Brevo Error: {err_msg}"}), 500
+            return jsonify({"msg": "Failed to send email. Please try again."}), 500
             
     except Exception as e:
         print("MAIL ERROR:", e)
-        return jsonify({"msg": f"Exception: {str(e)}"}), 500
+        return jsonify({"msg": "Failed to send email. Please try again."}), 500
     return jsonify({"msg": "Password reset OTP sent to your email"})
 
 
@@ -380,12 +444,12 @@ def reset_password():
 
     if not all([email, otp, new_password]):
         return jsonify({"msg": "All fields required"}), 400
-
-    stored = otp_store.get(email)
-    if not stored:
-        return jsonify({"msg": "OTP expired. Please request a new one."}), 400
-    if otp != stored:
-        return jsonify({"msg": "Invalid OTP. Please try again."}), 400
+    pwd_err = validate_password(new_password)
+    if pwd_err:
+        return jsonify({"msg": pwd_err}), 400
+    otp_ok, otp_msg = verify_otp_code(email, otp)
+    if not otp_ok:
+        return jsonify({"msg": otp_msg}), 400
 
     u = users.find_one({"email": email})
     if not u:
@@ -396,9 +460,6 @@ def reset_password():
         {"_id": u["_id"]},
         {"$set": {"password": generate_password_hash(new_password)}}
     )
-    
-    # Delete OTP from store
-    del otp_store[email]
 
     return jsonify({"msg": "Password reset successfully! Please sign in."})
 
@@ -413,12 +474,20 @@ def profile_update():
     data    = request.json or {}
     fields  = {}
     if "name"     in data: fields["name"]     = str(data["name"]).strip()
-    if "password" in data: fields["password"] = generate_password_hash(data["password"])
+    if "password" in data:
+        pwd_err = validate_password(data["password"])
+        if pwd_err:
+            return jsonify({"msg": pwd_err}), 400
+        fields["password"] = generate_password_hash(data["password"])
     if "bio"      in data: fields["bio"]      = str(data["bio"]).strip()
     if "messagePrivacy" in data: fields["messagePrivacy"] = str(data["messagePrivacy"]).strip()
     if not fields:
         return jsonify({"msg": "Nothing to update"}), 400
     users.update_one({"_id": ObjectId(user_id)}, {"$set": fields})
+    # Ensure ban expiry is checked after any update
+    u = users.find_one({"_id": ObjectId(user_id)})
+    if u.get("banned") and u.get("banExpires") and datetime.utcnow() > u.get("banExpires"):
+        users.update_one({"_id": u["_id"]}, {"$set": {"banned": False, "banExpires": None}})
     u = users.find_one({"_id": ObjectId(user_id)})
     return jsonify({"msg": "Updated", "name": u["name"], "email": u["email"]})
 
@@ -497,12 +566,11 @@ def heartbeat():
 def leaderboard():
     top = list(users.find(
         {"banned": {"$ne": True}},
-        {"name": 1, "xp": 1, "streak": 1, "badges": 1, "avatar": 1, "email": 1, "specialBadges": 1}
+        {"name": 1, "xp": 1, "streak": 1, "badges": 1, "avatar": 1, "specialBadges": 1}
     ).sort("xp", -1).limit(10))
     return jsonify([{
         "id":            str(u["_id"]),
         "name":          u.get("name", ""),
-        "email":         u.get("email", ""),
         "xp":            u.get("xp", 0),
         "streak":        u.get("streak", 0),
         "badges":        u.get("badges", []),
@@ -521,17 +589,92 @@ def ai():
     try:
         data       = request.json or {}
         user_input = data.get("prompt")
+        style      = data.get("style", "detailed").lower().strip()
         if not user_input:
             return jsonify({"response": "No prompt provided"}), 400
 
-        prompt = f"""You are an expert AI study assistant. Format your response clearly:
-- Use numbered sections like "1. Topic Name:" for main headings
-- Use "- " bullet points for details under each section
-- Keep spacing clean between sections
-- Do NOT use markdown symbols like # or **
-- Be comprehensive but concise
+        # ── Per-style length instructions ────────────────────────────────────
+        if style == "concise":
+            length_rule = """OUTPUT LENGTH RULE (CONCISE MODE):
+- Provide 3 to 4 lines per topic. Keep it short, crisp, and to-the-point.
+- Do NOT elaborate or add extra detail. Only key information.
+- Each section should be a brief paragraph of 3-4 sentences maximum."""
+        elif style == "bullet points":
+            length_rule = """OUTPUT LENGTH RULE (BULLET POINTS MODE):
+- Each bullet point MUST be exactly 1 line. Maximum 2 lines if absolutely necessary.
+- Bullet points must be concise, clear, and self-contained.
+- Use "- " prefix for every point. No paragraphs, no extra explanation.
+- Do NOT elaborate beyond the single-line bullet."""
+        else:
+            # "detailed" (default)
+            length_rule = """OUTPUT LENGTH RULE (DETAILED MODE):
+- Provide at least 10 to 12 lines of content per topic.
+- Cover the topic thoroughly with explanations, examples, and key concepts.
+- Use numbered sections with detailed sub-points.
+- Be comprehensive — the user wants an in-depth answer."""
 
-Topic:
+        prompt = f"""You are an advanced academic AI assistant designed to generate highly accurate, structured, and context-aware responses.
+
+Your job is to strictly follow user instructions and produce output that is precise, well-formatted, and aligned with the user's intent.
+
+========================
+CORE INSTRUCTIONS
+========================
+
+1. STRICT FORMAT CONTROL:
+- If the user requests bullet points, ALWAYS respond in bullet points.
+- If the user requests numbered lists, ALWAYS use numbered lists.
+- If the user requests paragraphs, respond in clear paragraphs.
+- Never mix formats unless explicitly asked.
+- Maintain clean spacing and readability.
+- Do NOT use markdown symbols like # or ** — use plain text formatting.
+
+2. {length_rule}
+
+3. INTENT UNDERSTANDING:
+- Carefully analyze the user's request before generating output.
+- Focus only on what the user asked.
+- Avoid generic, vague, or unrelated content.
+
+4. ACCURACY & QUALITY:
+- Ensure the content is factually correct and topic-specific.
+- Do not hallucinate irrelevant information.
+
+5. SUMMARY MODE:
+- When the user asks for a summary:
+  - Provide short, clear, and structured content.
+  - Highlight only key points.
+  - Avoid unnecessary explanation.
+
+6. QUESTION GENERATION MODE:
+- When the user asks for questions:
+  - Generate relevant and meaningful questions.
+  - Match difficulty level (basic / medium / advanced if implied).
+  - Keep questions aligned with the topic.
+
+7. PREVIOUS YEAR QUESTIONS (PYQ) MODE:
+- When the user asks for previous year questions:
+  - Generate realistic, exam-oriented questions based on commonly repeated patterns.
+  - Mimic university/board exam style.
+  - Keep questions structured and topic-focused.
+  - Do NOT generate random or irrelevant questions.
+  - If actual historical data is not available, simulate high-probability exam questions.
+
+8. OUTPUT ENHANCEMENT:
+- Use numbered sections like "1. Topic Name:" for main headings.
+- Use "- " bullet points for details under each section.
+- Maintain logical flow.
+- Avoid repetition.
+- Make output easy to read and understand.
+
+9. NO DEVIATION RULE:
+- Do NOT change the requested format.
+- Do NOT add extra explanations unless asked.
+- Do NOT ignore any instruction given by the user.
+- STRICTLY follow the OUTPUT LENGTH RULE above.
+
+========================
+USER REQUEST:
 {user_input}"""
 
         url      = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={API_KEY}"
@@ -698,8 +841,7 @@ def search_users():
     return jsonify([serialize_user(u) for u in results])
 
 
-# Bug 3 fix: user can edit their own post
-@app.route("/connect/post/<post_id>", methods=["PATCH"])
+@app.route("/connect/post/<post_id>", methods=["PUT"])
 @jwt_required()
 def edit_post(post_id):
     user_id = get_jwt_identity()
@@ -719,7 +861,6 @@ def edit_post(post_id):
     return jsonify({"msg": "Post updated"})
 
 
-# Bug 3 fix: user can delete their own post
 @app.route("/connect/post/<post_id>", methods=["DELETE"])
 @jwt_required()
 def delete_own_post(post_id):
@@ -813,13 +954,20 @@ def admin_login():
     data     = request.json or {}
     email    = data.get("email", "").strip().lower()
     password = data.get("password", "")
+    # Rate limit admin login: max 3 attempts per IP per minute
+    client_ip = request.remote_addr or "unknown"
+    if is_rate_limited(f"admin_login:{client_ip}", 3, 60):
+        return jsonify({"msg": "Too many attempts. Please wait."}), 429
     if not ADMIN_EMAILS or not ADMIN_PASSWORD:
         return jsonify({"msg": "Admin not configured on server"}), 500
-    if email not in ADMIN_EMAILS:
-        return jsonify({"msg": "Not an admin account"}), 403
-    if password != ADMIN_PASSWORD:
-        return jsonify({"msg": "Invalid admin password"}), 403
-    return jsonify({"msg": "Admin login successful", "adminToken": f"{email}::{password}", "email": email})
+    if email not in ADMIN_EMAILS or password != ADMIN_PASSWORD:
+        return jsonify({"msg": "Invalid credentials"}), 403
+    admin_token = create_access_token(
+        identity=email,
+        additional_claims={"is_admin": True},
+        expires_delta=timedelta(hours=4)
+    )
+    return jsonify({"msg": "Admin login successful", "adminToken": admin_token, "email": email})
 
 
 @app.route("/admin/users", methods=["GET"])
@@ -863,6 +1011,158 @@ def admin_get_guest_tickets():
     return jsonify([serialize_ticket(t) for t in guest_tickets])
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# USER DELETION & BAN SYSTEM
+# ══════════════════════════════════════════════════════════════════════════════
+
+def cascade_delete_user(user_id: str):
+    """Permanently delete a user and ALL associated data.
+    Ensures complete referential integrity — no orphan records.
+    Order: purge interactions → purge content → purge social → purge comms → delete user.
+    """
+    uid_obj = ObjectId(user_id)
+
+    # 1. Remove user's likes from all posts
+    posts.update_many({"likes": user_id}, {"$pull": {"likes": user_id}})
+
+    # 2. Remove comments authored by the user from all posts
+    posts.update_many(
+        {"comments.authorId": user_id},
+        {"$pull": {"comments": {"authorId": user_id}}}
+    )
+
+    # 3. Delete all posts authored by the user
+    posts.delete_many({"authorId": user_id})
+
+    # 4. Remove user from other users' followers/following lists
+    users.update_many({"followers": user_id}, {"$pull": {"followers": user_id}})
+    users.update_many({"following": user_id}, {"$pull": {"following": user_id}})
+
+    # 5. Delete all messages sent by or to this user
+    messages_col = db["messages"]
+    messages_col.delete_many({"$or": [{"fromId": user_id}, {"toId": user_id}]})
+
+    # 6. Delete all notifications for/from this user
+    notifications_col = db["notifications"]
+    notifications_col.delete_many({"$or": [{"userId": user_id}, {"fromId": user_id}]})
+
+    # 7. Delete support tickets filed by the user
+    tickets.delete_many({"userId": user_id})
+
+    # 8. Clean up achievement baselines referencing this user
+    # (baselines are stored per-user, so they go with the user doc)
+
+    # 9. Delete the user document — LAST to avoid orphan window
+    users.delete_one({"_id": uid_obj})
+
+
+def ban_user(user_id: str, duration_seconds: int):
+    """Temporarily ban a user. Data is preserved; access is blocked until expiry."""
+    expires_at = datetime.utcnow() + timedelta(seconds=duration_seconds)
+    users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"banned": True, "banExpires": expires_at}}
+    )
+
+
+def unban_user(user_id: str):
+    """Immediately lift a ban on a user."""
+    users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"banned": False, "banExpires": None}}
+    )
+
+
+def purge_orphan_data():
+    """One-shot cleanup: remove all likes, comments, followers/following
+    referencing user IDs that no longer exist in the database.
+    Returns a summary dict of what was cleaned."""
+    # Build set of all valid user IDs (as strings)
+    valid_ids = {str(u["_id"]) for u in users.find({}, {"_id": 1})}
+    stats = {"ghost_likes": 0, "ghost_comments": 0, "ghost_followers": 0, "ghost_following": 0}
+
+    # ── Clean posts: likes & comments from deleted users ─────────────────
+    all_posts = list(posts.find({}, {"likes": 1, "comments": 1}))
+    for p in all_posts:
+        pid = p["_id"]
+        # Ghost likes
+        old_likes = p.get("likes", [])
+        clean_likes = [uid for uid in old_likes if uid in valid_ids]
+        removed_likes = len(old_likes) - len(clean_likes)
+        # Ghost comments
+        old_comments = p.get("comments", [])
+        clean_comments = [c for c in old_comments if c.get("authorId") in valid_ids]
+        removed_comments = len(old_comments) - len(clean_comments)
+
+        if removed_likes > 0 or removed_comments > 0:
+            update = {}
+            if removed_likes > 0:
+                update["likes"] = clean_likes
+                stats["ghost_likes"] += removed_likes
+            if removed_comments > 0:
+                update["comments"] = clean_comments
+                stats["ghost_comments"] += removed_comments
+            posts.update_one({"_id": pid}, {"$set": update})
+
+    # ── Clean users: followers/following referencing deleted users ────────
+    all_users = list(users.find({}, {"followers": 1, "following": 1}))
+    for u in all_users:
+        uid = u["_id"]
+        old_f  = u.get("followers", [])
+        old_fg = u.get("following", [])
+        clean_f  = [x for x in old_f if x in valid_ids]
+        clean_fg = [x for x in old_fg if x in valid_ids]
+        removed_f  = len(old_f)  - len(clean_f)
+        removed_fg = len(old_fg) - len(clean_fg)
+        if removed_f > 0 or removed_fg > 0:
+            update = {}
+            if removed_f > 0:
+                update["followers"] = clean_f
+                stats["ghost_followers"] += removed_f
+            if removed_fg > 0:
+                update["following"] = clean_fg
+                stats["ghost_following"] += removed_fg
+            users.update_one({"_id": uid}, {"$set": update})
+
+    # ── Clean messages & notifications referencing deleted users ──────────
+    messages_c = db["messages"]
+    notifs_c   = db["notifications"]
+    ghost_user_ids = set()
+    # Collect unique sender/receiver IDs from messages
+    for m in messages_c.find({}, {"fromId": 1, "toId": 1}):
+        if m.get("fromId") not in valid_ids:
+            ghost_user_ids.add(m["fromId"])
+        if m.get("toId") not in valid_ids:
+            ghost_user_ids.add(m["toId"])
+    # Delete messages where both sides are ghost (or either side is ghost)
+    for gid in ghost_user_ids:
+        messages_c.delete_many({"$or": [{"fromId": gid}, {"toId": gid}]})
+        notifs_c.delete_many({"$or": [{"userId": gid}, {"fromId": gid}]})
+
+    stats["ghost_messages_users"] = len(ghost_user_ids)
+    return stats
+
+
+# ── Admin: Purge all orphan data from deleted users ─────────────────────────
+@app.route("/admin/purge-orphans", methods=["POST"])
+def admin_purge_orphans():
+    _, ok = require_admin()
+    if not ok: return jsonify({"msg": "Unauthorized"}), 403
+    stats = purge_orphan_data()
+    return jsonify({"msg": "Orphan data purged", "stats": stats})
+
+
+# ── User: Self-delete account ───────────────────────────────────────────────
+@app.route("/user/delete", methods=["DELETE"])
+@jwt_required()
+def user_self_delete():
+    user_id = get_jwt_identity()
+    if not users.find_one({"_id": ObjectId(user_id)}):
+        return jsonify({"msg": "User not found"}), 404
+    cascade_delete_user(user_id)
+    return jsonify({"msg": "Your account and all data have been permanently deleted"})
+
+
 @app.route("/admin/ticket/<ticket_id>/reply", methods=["POST"])
 def admin_reply_ticket(ticket_id):
     admin_email, ok = require_admin()
@@ -897,9 +1197,9 @@ def admin_reply_ticket(ticket_id):
               <h2 style="color:#00e5a0;font-size:24px;margin-bottom:4px;">ZuxterX Support</h2>
               <p style="color:#6b7585;font-size:13px;margin-bottom:24px;">Response to your support request</p>
 
-              <p style="font-size:15px;">Hi <strong>{user_name}</strong>,</p>
+              <p style="font-size:15px;">Hi <strong>{html_escape(user_name)}</strong>,</p>
               <p style="font-size:14px;color:#aab0bc;margin-top:8px;">
-                We have reviewed your support request: <strong>"{subject}"</strong>
+                We have reviewed your support request: <strong>"{html_escape(subject)}"</strong>
               </p>
 
               <div style="background:#111820;border:1px solid #1f2530;border-radius:12px;
@@ -933,7 +1233,6 @@ def admin_reply_ticket(ticket_id):
     return jsonify({"msg": "Reply sent"})
 
 
-# Bug 6 fix: admin can delete a ticket
 @app.route("/admin/ticket/<ticket_id>", methods=["DELETE"])
 def admin_delete_ticket(ticket_id):
     _, ok = require_admin()
@@ -1139,6 +1438,13 @@ def check_achievements():
     # ── Build active list with earned flag + per-achievement delta progress ──
     result_active = []
     for ach in active_achs:
+        # ── Skip expired achievements for the active list ──
+        dur = int(ach.get("durationDays", 0))
+        if dur > 0 and isinstance(ach.get("createdAt"), datetime):
+            exp = ach["createdAt"] + timedelta(days=dur)
+            if now > exp:
+                continue  # expired – don't send to frontend
+
         ach_id   = str(ach["_id"])
         base     = baselines.get(ach_id, {k: cur[k] for k in cur})  # fallback = cur (earned already)
         delta    = {k: max(0, cur[k] - base.get(k, 0)) for k in cur}
@@ -1155,7 +1461,6 @@ def check_achievements():
     })
 
 
-# Bug 6 fix: admin can delete a specific comment from a post by index
 @app.route("/admin/connect-post/<post_id>/comment/<int:comment_idx>", methods=["DELETE"])
 def admin_delete_comment(post_id, comment_idx):
     _, ok = require_admin()
@@ -1296,6 +1601,7 @@ def admin_remove_badge(user_id):
     return jsonify({"msg": f"Badge '{badge_id}' removed"})
 
 
+# ── Admin: Ban / Unban a user (temporary, timed ban with auto-expiry) ────────
 @app.route("/admin/user/<user_id>/ban", methods=["POST"])
 def admin_ban_user(user_id):
     _, ok = require_admin()
@@ -1303,27 +1609,34 @@ def admin_ban_user(user_id):
     data   = request.json or {}
     banned = bool(data.get("banned", True))
     try:
-        users.update_one({"_id": ObjectId(user_id)}, {"$set": {"banned": banned}})
+        u = users.find_one({"_id": ObjectId(user_id)})
     except Exception:
         return jsonify({"msg": "Invalid ID"}), 400
-    return jsonify({"msg": "User banned" if banned else "User unbanned"})
+    if not u:
+        return jsonify({"msg": "User not found"}), 404
+    if banned:
+        # Default 7-day ban; frontend can pass duration_seconds to override
+        duration = int(data.get("duration_seconds", 604800))
+        ban_user(user_id, duration)
+        return jsonify({"msg": f"User banned for {duration // 3600}h"})
+    else:
+        unban_user(user_id)
+        return jsonify({"msg": "User unbanned"})
 
 
+# ── Admin: Permanently delete a user + all data ─────────────────────────────
 @app.route("/admin/user/<user_id>/delete", methods=["DELETE"])
 def admin_delete_user(user_id):
     _, ok = require_admin()
     if not ok: return jsonify({"msg": "Unauthorized"}), 403
     try:
-        r = users.delete_one({"_id": ObjectId(user_id)})
+        u = users.find_one({"_id": ObjectId(user_id)})
     except Exception:
         return jsonify({"msg": "Invalid ID"}), 400
-    if r.deleted_count == 0:
+    if not u:
         return jsonify({"msg": "User not found"}), 404
-        
-    # Cascade delete from followers and following lists
-    users.update_many({}, {"$pull": {"followers": user_id, "following": user_id}})
-    
-    return jsonify({"msg": "User deleted permanently"})
+    cascade_delete_user(user_id)
+    return jsonify({"msg": "User and all associated data deleted permanently"})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1535,13 +1848,14 @@ def get_inbox():
             other = users.find_one({"_id": ObjectId(other_id)}, {"name": 1, "avatar": 1, "lastSeen": 1})
         except Exception:
             continue
-        if not other:
-            continue
-        unread = messages_col.count_documents({"fromId": other_id, "toId": user_id, "seen": False, "deletedFor": {"$nin": [user_id]}})
+        # If user was deleted, show as "Unavailable" instead of skipping
+        is_deleted = other is None
+        unread = 0 if is_deleted else messages_col.count_documents({"fromId": other_id, "toId": user_id, "seen": False, "deletedFor": {"$nin": [user_id]}})
         result.append({
-            "otherId":     str(other["_id"]),
-            "otherName":   other.get("name", ""),
-            "otherAvatar": other.get("avatar", None),
+            "otherId":     other_id,
+            "otherName":   other.get("name", "") if not is_deleted else "Unavailable",
+            "otherAvatar": other.get("avatar", None) if not is_deleted else None,
+            "isDeleted":   is_deleted,
             "lastText":    lm.get("text", ""),
             "lastTime":    lm.get("createdAt", "").isoformat() + "Z" if isinstance(lm.get("createdAt"), datetime) else lm.get("createdAt", ""),
             "unread":      unread,
