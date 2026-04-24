@@ -95,7 +95,78 @@ const css = `
   }
 `;
 
-function clearSession() { window._authToken = null; window._adminToken = null; }
+function clearSession() { window._authToken = null; window._adminToken = null; localStorage.removeItem("zx_token"); localStorage.removeItem("zx_admin_token"); sessionStorage.clear(); }
+
+// ── Cache Utility (Stale-While-Revalidate) ──────────────────────────────────
+const _memCache = {};
+
+function cacheSet(key, data, ttlMs) {
+  const entry = { data, ts: Date.now(), ttl: ttlMs };
+  _memCache[key] = entry;
+  try { sessionStorage.setItem("zx_c_" + key, JSON.stringify(entry)); } catch {}
+}
+
+function cacheGet(key) {
+  // Try memory first, then sessionStorage
+  let entry = _memCache[key];
+  if (!entry) {
+    try {
+      const raw = sessionStorage.getItem("zx_c_" + key);
+      if (raw) { entry = JSON.parse(raw); _memCache[key] = entry; }
+    } catch {}
+  }
+  if (!entry) return { data: null, fresh: false };
+  const age = Date.now() - entry.ts;
+  return { data: entry.data, fresh: age < entry.ttl };
+}
+
+function cacheDel(keyPrefix) {
+  // Delete all keys starting with prefix
+  Object.keys(_memCache).forEach(k => { if (k.startsWith(keyPrefix)) delete _memCache[k]; });
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("zx_c_" + keyPrefix)) sessionStorage.removeItem(k);
+    }
+  } catch {}
+}
+
+/**
+ * Fetch with stale-while-revalidate caching.
+ * Returns cached data instantly, then refreshes in background.
+ * @param {string} cacheKey - Unique cache key
+ * @param {string} url - API URL
+ * @param {object} opts - fetch options
+ * @param {number} ttlMs - cache TTL in ms
+ * @param {function} onData - called with data (may be called twice: cached + fresh)
+ */
+async function cachedFetch(cacheKey, url, opts, ttlMs, onData) {
+  const cached = cacheGet(cacheKey);
+  if (cached.data) {
+    onData(cached.data); // Instant UI from cache
+    if (cached.fresh) return; // Still fresh, skip network
+  }
+  // Fetch fresh data in background
+  try {
+    const res = await fetch(url, opts);
+    if (res.ok) {
+      const data = await res.json();
+      cacheSet(cacheKey, data, ttlMs);
+      onData(data);
+    }
+  } catch {}
+}
+
+// Cache TTLs
+const CACHE_TTL = {
+  leaderboard: 60 * 1000,       // 60s
+  posts: 30 * 1000,             // 30s
+  userProfile: 120 * 1000,      // 2min
+  userPosts: 60 * 1000,         // 60s
+  myTickets: 120 * 1000,        // 2min
+  inbox: 30 * 1000,             // 30s
+  achievements: 120 * 1000,     // 2min
+};
 
 // ── Special Achievement badge pill shown under usernames everywhere ───────────
 function SpecialBadgePill({ badge }) {
@@ -251,6 +322,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
       const data = await res.json();
       if (!res.ok) { setErr(data.msg || "Error"); setLoading(false); return; }
       window._authToken = data.token;
+      localStorage.setItem("zx_token", data.token);
       onLogin(data);
     } catch { setErr("Server error"); }
     setLoading(false);
@@ -298,6 +370,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
       const data = await res.json();
       if (!res.ok) { setErr(data.msg || "Not authorized"); setLoading(false); return; }
       window._adminToken = data.adminToken;
+      localStorage.setItem("zx_admin_token", data.adminToken);
       onAdminLogin({ email: data.email });
     } catch { setErr("Server error"); }
     setLoading(false);
@@ -858,10 +931,12 @@ function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
   useEffect(() => {
     if (currentTab === "posts") {
       setLoadingPosts(true);
-      fetch(`${BASE_URL}/connect/user/${user.id}/posts`, { headers: { "Authorization": "Bearer " + window._authToken } })
-        .then(r => r.json())
-        .then(data => { setPosts(Array.isArray(data) ? data : []); setLoadingPosts(false); })
-        .catch(() => setLoadingPosts(false));
+      cachedFetch(
+        `myPosts_${user.id}`, `${BASE_URL}/connect/user/${user.id}/posts`,
+        { headers: { "Authorization": "Bearer " + window._authToken } },
+        CACHE_TTL.userPosts,
+        data => { setPosts(Array.isArray(data) ? data : []); setLoadingPosts(false); }
+      );
     }
   }, [currentTab, user.id]);
 
@@ -1195,13 +1270,14 @@ function ZuxterConnect({ user, onUserUpdate }) {
     return () => clearTimeout(id);
   }, [searchQuery]);
 
-  async function loadPosts() {
-    try {
-      const res = await fetch(`${BASE_URL}/connect/posts`, { headers: { "Authorization": "Bearer " + window._authToken } });
-      const data = await res.json();
-      if (res.ok) setPosts(data);
-    } catch { }
-    setLoadingPosts(false);
+  async function loadPosts(skipCache) {
+    if (skipCache) cacheDel("feedPosts");
+    await cachedFetch(
+      "feedPosts", `${BASE_URL}/connect/posts`,
+      { headers: { "Authorization": "Bearer " + window._authToken } },
+      CACHE_TTL.posts,
+      data => { if (Array.isArray(data)) setPosts(data); setLoadingPosts(false); }
+    );
   }
 
   useEffect(() => { loadPosts(); }, []);
@@ -1218,7 +1294,7 @@ function ZuxterConnect({ user, onUserUpdate }) {
       const data = await res.json();
       if (!res.ok) { setPostErr(data.msg || "Error posting"); setPosting(false); return; }
       setPostText(""); setPostImg(null);
-      await loadPosts();
+      await loadPosts(true);
       setCurrentTab("feed");
     } catch { setPostErr("Server error"); }
     setPosting(false);
@@ -1229,7 +1305,7 @@ function ZuxterConnect({ user, onUserUpdate }) {
       await fetch(`${BASE_URL}/connect/post/${postId}/like`, {
         method: "POST", headers: { "Authorization": "Bearer " + window._authToken }
       });
-      await loadPosts();
+      await loadPosts(true);
     } catch { }
   }
 
@@ -1241,7 +1317,7 @@ function ZuxterConnect({ user, onUserUpdate }) {
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + window._authToken },
         body: JSON.stringify({ text }),
       });
-      await loadPosts();
+      await loadPosts(true);
     } catch { }
   }
 
@@ -1260,7 +1336,7 @@ function ZuxterConnect({ user, onUserUpdate }) {
       await fetch(`${BASE_URL}/connect/post/${postId}`, {
         method: "DELETE", headers: { "Authorization": "Bearer " + window._authToken }
       });
-      await loadPosts();
+      await loadPosts(true);
     } catch { }
   }
 
@@ -1606,18 +1682,11 @@ function UserProfileView({ userId, currentUser, onBack, onFollow, onMessage }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [pRes, postsRes] = await Promise.all([
-          fetch(`${BASE_URL}/connect/user/${userId}`, { headers: { "Authorization": "Bearer " + window._authToken } }),
-          fetch(`${BASE_URL}/connect/user/${userId}/posts`, { headers: { "Authorization": "Bearer " + window._authToken } }),
-        ]);
-        if (pRes.ok) setProfile(await pRes.json());
-        if (postsRes.ok) setPosts(await postsRes.json());
-      } catch { }
-      setLoading(false);
-    }
-    load();
+    const authHdr = { headers: { "Authorization": "Bearer " + window._authToken } };
+    let done = 0;
+    const checkDone = () => { done++; if (done >= 2) setLoading(false); };
+    cachedFetch(`userProfile_${userId}`, `${BASE_URL}/connect/user/${userId}`, authHdr, CACHE_TTL.userProfile, d => { setProfile(d); checkDone(); });
+    cachedFetch(`userPosts_${userId}`, `${BASE_URL}/connect/user/${userId}/posts`, authHdr, CACHE_TTL.userPosts, d => { setPosts(Array.isArray(d) ? d : []); checkDone(); });
   }, [userId]);
 
   async function handleLike(postId) {
@@ -1761,8 +1830,13 @@ function SupportPage({ user }) {
   const [myTickets, setMyTickets] = useState([]);
 
   useEffect(() => {
-    fetch(`${BASE_URL}/support/my-tickets`, { headers: { "Authorization": "Bearer " + window._authToken } })
-      .then(r => r.json()).then(d => { if (Array.isArray(d)) setMyTickets(d); }).catch(() => { });
+    if (submitted) cacheDel("myTickets");
+    cachedFetch(
+      "myTickets", `${BASE_URL}/support/my-tickets`,
+      { headers: { "Authorization": "Bearer " + window._authToken } },
+      CACHE_TTL.myTickets,
+      d => { if (Array.isArray(d)) setMyTickets(d); }
+    );
   }, [submitted]);
 
   async function submitTicket() {
@@ -2797,6 +2871,13 @@ function BadgesPage({ user }) {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    // Achievements check is POST so we use a special cached pattern
+    const cached = cacheGet("achievements");
+    if (cached.data) {
+      const d = cached.data;
+      setActiveAchs(d.active || []); setCustomBadges(d.customBadges || []); setStats(d.stats || {});
+      if (cached.fresh) { setChecking(false); return; }
+    }
     (async () => {
       try {
         const res = await fetch(`${BASE_URL}/achievements/check`, {
@@ -2805,6 +2886,7 @@ function BadgesPage({ user }) {
         });
         if (res.ok) {
           const d = await res.json();
+          cacheSet("achievements", d, CACHE_TTL.achievements);
           setActiveAchs(d.active || []);
           setCustomBadges(d.customBadges || []);
           setStats(d.stats || {});
@@ -2953,7 +3035,7 @@ function LeaderboardPage({ currentUser }) {
   const medals = ["🥇", "🥈", "🥉"];
 
   useEffect(() => {
-    fetch(`${BASE_URL}/leaderboard`).then(r => r.json()).then(d => { setBoard(d); setLoading(false); }).catch(() => setLoading(false));
+    cachedFetch("leaderboard", `${BASE_URL}/leaderboard`, {}, CACHE_TTL.leaderboard, d => { setBoard(d); setLoading(false); });
   }, []);
 
   return (
@@ -2995,6 +3077,26 @@ export default function App() {
   const [showNotifs, setShowNotifs] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [msgCount, setMsgCount] = useState(0);
+  const [restoring, setRestoring] = useState(true);
+
+  // Restore session from localStorage on page load / refresh
+  useEffect(() => {
+    const savedToken = localStorage.getItem("zx_token");
+    const savedAdminToken = localStorage.getItem("zx_admin_token");
+    if (savedToken) {
+      window._authToken = savedToken;
+      fetch(`${BASE_URL}/me`, { headers: { "Authorization": "Bearer " + savedToken } })
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(data => { setUser(data); setRestoring(false); })
+        .catch(() => { clearSession(); setRestoring(false); });
+    } else if (savedAdminToken) {
+      window._adminToken = savedAdminToken;
+      setAdminUser({ email: "admin" });
+      setRestoring(false);
+    } else {
+      setRestoring(false);
+    }
+  }, []);
 
   function handleLogin(data) { setUser(data); }
   function handleAdminLogin(data) { setAdminUser(data); }
@@ -3074,6 +3176,7 @@ export default function App() {
     </>
   );
 
+  if (restoring) return <>{splineBg}<div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: COLORS.accent, fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, letterSpacing: "-0.5px" }}>Loading…</div></>;
   if (adminUser) return <>{splineBg}<AdminPanel adminEmail={adminUser.email} onLogout={handleAdminLogout} /></>;
   if (!user) return <>{splineBg}<AuthScreen onLogin={handleLogin} onAdminLogin={handleAdminLogin} /></>;
 

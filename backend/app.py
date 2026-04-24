@@ -395,6 +395,24 @@ def login():
     return jsonify({**serialize_user(u), "token": token})
 
 
+@app.route("/me", methods=["GET"])
+@jwt_required()
+def get_me():
+    user_id = get_jwt_identity()
+    u = users.find_one({"_id": ObjectId(user_id)})
+    if not u:
+        return jsonify({"msg": "User not found"}), 404
+    # Check for temporary ban expiry
+    if u.get("banned"):
+        expires = u.get("banExpires")
+        if expires and datetime.utcnow() > expires:
+            users.update_one({"_id": u["_id"]}, {"$set": {"banned": False, "banExpires": None}})
+            u = users.find_one({"_id": u["_id"]})
+        else:
+            return jsonify({"msg": "Account suspended"}), 403
+    return jsonify(serialize_user(u))
+
+
 @app.route("/forgot-password-otp", methods=["POST"])
 def forgot_password_otp():
     data  = request.json or {}
