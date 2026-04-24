@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ZuxterX Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-error-container": "#ffdad6",
+                        "on-primary-container": "#000000",
+                        "secondary-fixed": "#c7c6c6",
+                        "secondary-fixed-dim": "#ababab",
+                        "surface-tint": "#c6c6c7",
+                        "on-secondary-fixed": "#1b1c1c",
+                        "tertiary-container": "#919191",
+                        "secondary": "#c7c6c6",
+                        "on-background": "#e5e2e1",
+                        "on-secondary": "#1b1c1c",
+                        "on-surface": "#e5e2e1",
+                        "error-container": "#93000a",
+                        "tertiary": "#e2e2e2",
+                        "on-primary-fixed-variant": "#e2e2e2",
+                        "surface-container": "#201f1f",
+                        "surface-bright": "#3a3939",
+                        "surface": "#141313",
+                        "inverse-surface": "#e5e2e1",
+                        "outline": "#919191",
+                        "surface-container-high": "#2a2a2a",
+                        "tertiary-fixed": "#5e5e5e",
+                        "on-primary-fixed": "#ffffff",
+                        "on-surface-variant": "#c6c6c6",
+                        "on-tertiary-fixed-variant": "#e2e2e2",
+                        "inverse-primary": "#5d5f5f",
+                        "error": "#ffb4ab",
+                        "surface-variant": "#353434",
+                        "on-secondary-container": "#e3e2e2",
+                        "surface-dim": "#141313",
+                        "on-tertiary-container": "#000000",
+                        "on-secondary-fixed-variant": "#3b3b3c",
+                        "tertiary-fixed-dim": "#474747",
+                        "primary-fixed": "#5d5f5f",
+                        "primary-fixed-dim": "#454747",
+                        "background": "#141313",
+                        "primary": "#ffffff",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-tertiary": "#1b1b1b",
+                        "outline-variant": "#474747",
+                        "secondary-container": "#464747",
+                        "primary-container": "#d4d4d4",
+                        "on-error": "#690005",
+                        "surface-container-highest": "#353434",
+                        "on-tertiary-fixed": "#ffffff",
+                        "surface-container-low": "#1c1b1b",
+                        "on-primary": "#1a1c1c",
+                        "inverse-on-surface": "#313030"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "display": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #030303;
+            color: #e5e2e1;
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-card {
+            background: rgba(32, 31, 31, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-x {
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="antialiased pb-24">
+<!-- Top Bar -->
+<header class="fixed top-0 w-full z-50 bg-[#030303]/80 backdrop-blur-md flex justify-between items-center px-6 py-4 border-b border-white/5">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-white/10 overflow-hidden">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="Close-up portrait of a professional man with clean lighting on a dark background for profile avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBodf4jGJhPQh2ZI6fgis3v5xwokcl00_E-tZO1ZBCN7ZDV-iWj-jB4EASb7qgCFdP9tMHItsnDwrhz-cmHocoNGqg9zxMLgYgCgjpEw50upZbqWnIEor2d178MKkNGl7PytCOlXgNI3BARszJUnJA-_wXR4KIWCvWwIeNhlhiJTckF8pE0nWxEOtmfoVgppr7KJKuiIyKCTyDix0mBUfSTTeFt3MwJH6EsRn5jZQzlL9r9eaevgweA38GL2Dsr9okO-0RrK9pr-kU"/>
+</div>
+</div>
+<h1 class="text-lg font-bold tracking-tighter text-white font-['Inter']">
+            Zuxter<span class="glow-x">X</span>
+</h1>
+<div class="flex items-center">
+<span class="material-symbols-outlined text-white hover:text-neutral-300 transition-colors cursor-pointer" data-icon="notifications">notifications</span>
+</div>
+</header>
+<main class="mt-20 px-4 space-y-8">
+<!-- Stats Row -->
+<section class="flex gap-4 overflow-x-auto hide-scrollbar py-2">
+<div class="glass-card min-w-[140px] p-4 rounded-xl flex flex-col items-center justify-center gap-1">
+<span class="text-xl">⭐</span>
+<span class="text-white font-bold text-lg">2,450</span>
+<span class="text-neutral-500 text-[10px] uppercase tracking-widest font-semibold">Total XP</span>
+</div>
+<div class="glass-card min-w-[140px] p-4 rounded-xl flex flex-col items-center justify-center gap-1">
+<span class="text-xl">🔥</span>
+<span class="text-white font-bold text-lg">7 Day</span>
+<span class="text-neutral-500 text-[10px] uppercase tracking-widest font-semibold">Streak</span>
+</div>
+<div class="glass-card min-w-[140px] p-4 rounded-xl flex flex-col items-center justify-center gap-1">
+<span class="text-xl">📚</span>
+<span class="text-white font-bold text-lg">12 Plans</span>
+<span class="text-neutral-500 text-[10px] uppercase tracking-widest font-semibold">Active</span>
+</div>
+</section>
+<!-- Quick Actions Grid -->
+<section>
+<div class="grid grid-cols-2 gap-4">
+<button class="glass-card p-6 rounded-2xl flex flex-col items-center gap-3 transition-all active:scale-95 hover:bg-white/5 group">
+<div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-white" data-icon="event_note">event_note</span>
+</div>
+<span class="text-white text-sm font-medium">Study Planner</span>
+</button>
+<button class="glass-card p-6 rounded-2xl flex flex-col items-center gap-3 transition-all active:scale-95 hover:bg-white/5 group">
+<div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-white" data-icon="quiz">quiz</span>
+</div>
+<span class="text-white text-sm font-medium">Questions</span>
+</button>
+<button class="glass-card p-6 rounded-2xl flex flex-col items-center gap-3 transition-all active:scale-95 hover:bg-white/5 group">
+<div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-white" data-icon="summarize">summarize</span>
+</div>
+<span class="text-white text-sm font-medium">AI Summary</span>
+</button>
+<button class="glass-card p-6 rounded-2xl flex flex-col items-center gap-3 transition-all active:scale-95 hover:bg-white/5 group">
+<div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-white" data-icon="hub">hub</span>
+</div>
+<span class="text-white text-sm font-medium">ZuxterConnect</span>
+</button>
+</div>
+</section>
+<!-- Leaderboard Section -->
+<section>
+<div class="flex justify-between items-end mb-4">
+<div>
+<span class="text-[10px] text-neutral-500 uppercase tracking-[0.2em] font-bold block mb-1">Global Rankings</span>
+<h2 class="text-xl font-semibold text-white">🏆 Leaderboard</h2>
+</div>
+<button class="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-1 uppercase tracking-widest font-medium">
+                    View All <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<div class="glass-card rounded-2xl overflow-hidden p-2">
+<div class="space-y-1">
+<!-- #1 -->
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/5">
+<div class="flex items-center gap-4">
+<span class="w-6 text-center font-bold text-lg">👑</span>
+<div class="w-10 h-10 rounded-full border-2 border-yellow-500/50 p-0.5">
+<img class="w-full h-full rounded-full object-cover" data-alt="Young professional woman with focused expression in artistic dark lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxxGD3P46GLEaT-wB0OHCjyZS5f1HH5593Mb5oQJqOpUhkDMgXU1WR9FRcYiSmCYs58jDvFSFdvo5PGZxtsmEVtuJt6NXsrgNmn6_eLV41XnAYo7nki_D8eJxGmGcH4F4ppoqwAi0t27h2SWR-xnY8xowgAQek6tELekJMUAR1Do-LsvY-vf6FCiTn2rlDQiiHaS6ciCgLXOSpbGGbAufSlCjgxN3KTUdP65k6u38cLYS0E8QdoD4ytKRvPcIQqPGuj7kmSkMqW3A"/>
+</div>
+<div>
+<p class="text-sm font-bold text-white">Elena Vance</p>
+<span class="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-500 rounded-full font-bold uppercase tracking-tighter">Strategist</span>
+</div>
+</div>
+<span class="text-sm font-black text-white">4,120 XP</span>
+</div>
+<!-- #2 -->
+<div class="flex items-center justify-between p-3 rounded-xl">
+<div class="flex items-center gap-4">
+<span class="w-6 text-center font-bold text-neutral-400">2</span>
+<div class="w-10 h-10 rounded-full border border-white/10">
+<img class="w-full h-full rounded-full object-cover" data-alt="Man with glasses looking thoughtfully against a dark neutral studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAC25z560uJf7gpnIlDTwFrns2Mc9ck-JOQnPdgPBr0Ge0bOt3weL_vmudVJmLJyhhKCRCvVbErHTViJH8mTAam1hvVBDYbLnYv7j8M6zNok82YGgBv9g4pvDRJh5bb6YvfkvrImnUspDTe4pnZ735EZTgd0fik-zzmEBrDrv1PHULPRYnAeROHgq7H1xQQSM2ogK_sVP1Z2SoiioC43M-bIqPiKG8tavRYWB10UMmfomrKb2xlKJ4y1NuRC3Mk_xJLW8pQC5zyr8k"/>
+</div>
+<div>
+<p class="text-sm font-medium text-white">Marcus Thorne</p>
+<span class="text-[9px] px-2 py-0.5 bg-white/5 text-neutral-400 rounded-full font-bold uppercase tracking-tighter">Analyst</span>
+</div>
+</div>
+<span class="text-sm font-bold text-neutral-300">3,890 XP</span>
+</div>
+<!-- #3 -->
+<div class="flex items-center justify-between p-3 rounded-xl">
+<div class="flex items-center gap-4">
+<span class="w-6 text-center font-bold text-orange-400/80">3</span>
+<div class="w-10 h-10 rounded-full border border-white/10">
+<img class="w-full h-full rounded-full object-cover" data-alt="Portrait of a creative professional in soft cinematic dark lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB16GuQi5IfENFqrxFN3lWoxWzQ10toSH2FX88D1z1_xn26x6eGINWuVxmgGllEOzMOXVB42nAqPpAwDIJOoGSHbthnyrxCin6ludKj73Ml-e-HWp3flFl4l5lLS69aVW7JIJW9tpxYzCP3-5H1pnTku-1v8rCmsZhrDDU1PYxs3yLKTjjAnzLyhG02LHmRkTjo8E7sj09mhUNWyLXJ26-HFIBetRj-Bzf85ZIyfem5k8HBhEqzODgVaSB5oo3XlfvRvVQSbWrZZAw"/>
+</div>
+<div>
+<p class="text-sm font-medium text-white">Julian Grey</p>
+<span class="text-[9px] px-2 py-0.5 bg-white/5 text-neutral-400 rounded-full font-bold uppercase tracking-tighter">Researcher</span>
+</div>
+</div>
+<span class="text-sm font-bold text-neutral-300">3,650 XP</span>
+</div>
+<!-- Current User (Highlighted) -->
+<div class="flex items-center justify-between p-3 rounded-xl border border-white/20 bg-white/[0.08] mt-2 shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+<div class="flex items-center gap-4">
+<span class="w-6 text-center font-bold text-white">12</span>
+<div class="w-10 h-10 rounded-full border border-white/40">
+<img class="w-full h-full rounded-full object-cover" data-alt="User profile avatar in dark aesthetic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCX9Zfq9UHIoNJGSzV0083LyU_RCmbuK-dCXiRWaFu9ZAK_H8Pr8i7TkO_WMDsTkBM-U0POxhIeHj-Xb1Q5l93PyJXCBTC2Es8c8uwkmCt4BUMJZmxh-XeYkXobiUTJuF_SkkWR-G-Us0uZ10NOx4nwVnV4zQVY6HQ2MDdLaqyhVWEtqrjeGN732wtxBpujkUKIXUIevdLdXFFZvYgfxaWEgxtKRFdKI5fs-8DoT4ZTKcD3LZVLCnDENycbBMR_x_MeHgDozZR5WVc"/>
+</div>
+<div>
+<p class="text-sm font-bold text-white">You (Alex)</p>
+<span class="text-[9px] px-2 py-0.5 bg-white/20 text-white rounded-full font-bold uppercase tracking-tighter">Scholar</span>
+</div>
+</div>
+<span class="text-sm font-black text-white">2,450 XP</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Chatbot Widget -->
+<section class="pb-8">
+<div class="glass-card rounded-3xl overflow-hidden flex flex-col min-h-[340px]">
+<div class="p-4 border-b border-white/5 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-white" data-icon="smart_toy">smart_toy</span>
+<div>
+<h3 class="text-sm font-bold text-white">ZuxterX Assistant</h3>
+<div class="flex items-center gap-1.5">
+<div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+<span class="text-[9px] text-neutral-500 uppercase tracking-widest font-bold">Online</span>
+</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-neutral-500 text-sm" data-icon="more_horiz">more_horiz</span>
+</div>
+<div class="flex-1 p-4 space-y-4 max-h-[220px] overflow-y-auto hide-scrollbar">
+<!-- Bot Msg -->
+<div class="flex gap-3 items-end">
+<div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[14px] text-white" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="bg-surface-container-high p-3 rounded-2xl rounded-bl-none max-w-[80%] border border-white/5">
+<p class="text-xs text-neutral-200 leading-relaxed">Welcome back, Alex. I've analyzed your progress. Ready to tackle the Quantum Physics summary?</p>
+</div>
+</div>
+<!-- User Msg -->
+<div class="flex gap-3 items-end justify-end">
+<div class="bg-white text-black p-3 rounded-2xl rounded-br-none max-w-[80%]">
+<p class="text-xs font-medium leading-relaxed">Yes, highlight the main formulas for my test tomorrow.</p>
+</div>
+</div>
+<!-- Bot Msg -->
+<div class="flex gap-3 items-end">
+<div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[14px] text-white" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="bg-surface-container-high p-3 rounded-2xl rounded-bl-none max-w-[80%] border border-white/5">
+<p class="text-xs text-neutral-200 leading-relaxed">Generating key formulas. I'll focus on Schrödinger's Equation and Heisenberg's Principle. One moment...</p>
+</div>
+</div>
+</div>
+<div class="p-4 bg-white/5 border-t border-white/5">
+<div class="relative">
+<input class="w-full bg-surface-container-lowest border-none rounded-full px-5 py-3 text-sm text-white placeholder-neutral-500 focus:ring-1 focus:ring-white/20 transition-all" placeholder="Ask me anything..." type="text"/>
+<button class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white flex items-center justify-center transition-transform active:scale-90 shadow-lg">
+<span class="material-symbols-outlined text-black text-lg" data-icon="send">send</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Nav Bar -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-2xl bg-[#030303]/90 backdrop-blur-xl border-t border-white/5 shadow-[0_-4px_24px_rgba(0,0,0,0.8)] flex justify-around items-center px-2 py-3">
+<!-- Home Active -->
+<a class="flex flex-col items-center justify-center text-white bg-white/5 rounded-full p-2 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-widest mt-1">Home</span>
+<div class="w-1 h-1 bg-white rounded-full mt-1"></div>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-500 p-2 hover:text-white/80 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="menu_book">menu_book</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-widest mt-1">Planner</span>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-500 p-2 hover:text-white/80 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-widest mt-1">Connect</span>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-500 p-2 hover:text-white/80 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="leaderboard">leaderboard</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-widest mt-1">Badges</span>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-500 p-2 hover:text-white/80 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-['Inter'] text-[10px] font-medium uppercase tracking-widest mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

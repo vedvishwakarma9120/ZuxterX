@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "surface-dim": "#141313",
+                "tertiary-container": "#919191",
+                "on-surface": "#e5e2e1",
+                "on-tertiary-fixed": "#ffffff",
+                "outline-variant": "#474747",
+                "surface-bright": "#3a3939",
+                "primary": "#ffffff",
+                "error": "#ffb4ab",
+                "primary-fixed": "#5d5f5f",
+                "tertiary-fixed": "#5e5e5e",
+                "surface": "#141313",
+                "on-surface-variant": "#c6c6c6",
+                "surface-container-highest": "#353434",
+                "inverse-primary": "#5d5f5f",
+                "on-secondary-container": "#e3e2e2",
+                "surface-variant": "#353434",
+                "on-primary-fixed": "#ffffff",
+                "inverse-surface": "#e5e2e1",
+                "primary-container": "#d4d4d4",
+                "on-tertiary-container": "#000000",
+                "on-primary-container": "#000000",
+                "on-secondary": "#1b1c1c",
+                "secondary-container": "#464747",
+                "on-error": "#690005",
+                "secondary-fixed": "#c7c6c6",
+                "background": "#141313",
+                "surface-tint": "#c6c6c7",
+                "primary-fixed-dim": "#454747",
+                "outline": "#919191",
+                "on-secondary-fixed": "#1b1c1c",
+                "secondary-fixed-dim": "#ababab",
+                "tertiary-fixed-dim": "#474747",
+                "on-error-container": "#ffdad6",
+                "surface-container-high": "#2a2a2a",
+                "tertiary": "#e2e2e2",
+                "on-tertiary": "#1b1b1b",
+                "surface-container": "#201f1f",
+                "inverse-on-surface": "#313030",
+                "error-container": "#93000a",
+                "on-background": "#e5e2e1",
+                "surface-container-lowest": "#0e0e0e",
+                "on-primary": "#1a1c1c",
+                "secondary": "#c7c6c6",
+                "surface-container-low": "#1c1b1b",
+                "on-primary-fixed-variant": "#e2e2e2",
+                "on-secondary-fixed-variant": "#3b3b3c",
+                "on-tertiary-fixed-variant": "#e2e2e2"
+            },
+            "borderRadius": {
+                "DEFAULT": "1rem",
+                "lg": "2rem",
+                "xl": "3rem",
+                "full": "9999px"
+            },
+            "fontFamily": {
+                "headline": ["Inter"],
+                "display": ["Inter"],
+                "body": ["Inter"],
+                "label": ["Inter"]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-x {
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #353434;
+            border-radius: 10px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-[#030303] text-on-surface font-body min-h-screen flex flex-col items-center justify-start py-12 px-6">
+<!-- Header Section -->
+<header class="text-center mb-10 w-full max-w-md">
+<h1 class="text-4xl font-extrabold tracking-tighter text-primary mb-1">
+            Zuxter<span class="glow-x">X</span>
+</h1>
+<p class="text-on-surface-variant text-sm font-medium tracking-wide uppercase">AI Study Platform</p>
+</header>
+<!-- Main Auth Card -->
+<main class="w-full max-w-md glass-panel rounded-lg overflow-hidden flex flex-col shadow-2xl">
+<!-- Tab Switcher -->
+<nav class="flex p-2 gap-1 bg-surface-container-lowest/50 border-b border-white/5">
+<button class="flex-1 py-2 text-sm font-bold rounded-lg transition-all duration-300 bg-primary text-on-primary shadow-sm">
+                Sign In
+            </button>
+<button class="flex-1 py-2 text-sm font-semibold text-on-surface-variant hover:text-primary transition-all duration-300">
+                Sign Up
+            </button>
+<button class="flex-1 py-2 text-sm font-semibold text-on-surface-variant hover:text-primary transition-all duration-300">
+                Admin
+            </button>
+</nav>
+<!-- Auth Form Section -->
+<div class="p-8 space-y-6">
+<div class="space-y-4">
+<!-- Email Field -->
+<div class="space-y-2">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">
+                            mail
+                        </span>
+<input class="w-full bg-[#111111] border-none rounded-lg py-4 pl-12 pr-4 text-primary placeholder:text-on-surface-variant/40 focus:ring-1 focus:ring-primary/20 transition-all outline-none" placeholder="Email Address" type="email"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="space-y-2">
+<div class="flex justify-end">
+<a class="text-xs font-semibold text-on-surface-variant hover:text-primary transition-colors" href="#">Forgot?</a>
+</div>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">
+                            lock
+                        </span>
+<input class="w-full bg-[#111111] border-none rounded-lg py-4 pl-12 pr-4 text-primary placeholder:text-on-surface-variant/40 focus:ring-1 focus:ring-primary/20 transition-all outline-none" placeholder="Password" type="password"/>
+</div>
+</div>
+<!-- Sign In Button -->
+<button class="w-full py-4 bg-primary text-on-primary font-bold text-lg rounded-lg shadow-[0_8px_20px_rgba(255,255,255,0.1)] active:scale-[0.98] transition-all">
+                    Sign In
+                </button>
+</div>
+<!-- Divider -->
+<div class="relative py-4">
+<div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/5"></div></div>
+<div class="relative flex justify-center text-xs uppercase tracking-widest text-on-surface-variant/40 font-bold bg-[#0a0a0a] px-2">Assistant</div>
+</div>
+<!-- Chatbot Section -->
+<section class="space-y-4">
+<header class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-primary">robot_2</span>
+</div>
+<div>
+<h3 class="text-xs font-bold text-primary flex items-center gap-1.5">
+                            ZuxterX Assistant
+                            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+</h3>
+</div>
+</header>
+<div class="space-y-3 h-48 overflow-y-auto custom-scrollbar pr-1">
+<!-- Bot Bubble -->
+<div class="flex justify-start">
+<div class="max-w-[85%] bg-surface-container/60 backdrop-blur-md rounded-2xl rounded-tl-none px-4 py-3 text-sm text-on-surface leading-relaxed">
+                            Hey! Need help signing in? I'm here 😊
+                        </div>
+</div>
+<!-- User Bubble -->
+<div class="flex justify-end">
+<div class="max-w-[85%] bg-primary text-on-primary rounded-2xl rounded-tr-none px-4 py-3 text-sm font-medium leading-relaxed">
+                            How do I reset my password?
+                        </div>
+</div>
+<!-- Bot Bubble -->
+<div class="flex justify-start">
+<div class="max-w-[85%] bg-surface-container/60 backdrop-blur-md rounded-2xl rounded-tl-none px-4 py-3 text-sm text-on-surface leading-relaxed">
+                            Tap 'Forgot?' above the Sign In button. We'll send an OTP to your email. Easy peasy! 🔑
+                        </div>
+</div>
+</div>
+<!-- Chat Input -->
+<div class="relative flex items-center mt-4 group">
+<input class="w-full bg-surface-container-low border border-white/5 rounded-full py-3 px-5 text-sm text-primary placeholder:text-on-surface-variant/40 focus:ring-1 focus:ring-primary/10 transition-all outline-none" placeholder="Ask me anything..." type="text"/>
+<button class="absolute right-2 p-2 bg-primary text-on-primary rounded-full hover:scale-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-sm font-bold">arrow_forward</span>
+</button>
+</div>
+</section>
+</div>
+</main>
+<!-- Footer Links -->
+<footer class="mt-8 flex gap-4 text-xs font-semibold text-on-surface-variant/60">
+<a class="hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<span>·</span>
+<a class="hover:text-primary transition-colors" href="#">Terms of Service</a>
+</footer>
+<!-- Background Decoration -->
+<div class="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-white/5 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+<div class="fixed bottom-[-5%] right-[-5%] w-[30%] h-[30%] bg-white/3 blur-[100px] rounded-full pointer-events-none -z-10"></div>
+</body></html>
