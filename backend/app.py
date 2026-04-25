@@ -19,7 +19,7 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 API_KEY          = os.getenv("API_KEY")
 MONGO_URI        = os.getenv("MONGO_URI")
@@ -31,7 +31,7 @@ ADMIN_PASSWORD   = os.getenv("ADMIN_PASSWORD", "")
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/*": {"origins": ["https://zuxter-x.vercel.app", "http://localhost:5173"]}}, supports_credentials=True)
+CORS(app, resources={r"/*": {"origins": ["https://zuxter-x.vercel.app", "http://localhost:5173", "http://localhost:5174"]}}, supports_credentials=True)
 
 @app.after_request
 def after_request(response):

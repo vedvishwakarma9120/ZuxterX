@@ -1,5 +1,5 @@
 import "./App.css";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import html2pdf from "html2pdf.js/dist/html2pdf.bundle";
 
 const BASE_URL =
@@ -9,13 +9,43 @@ const BASE_URL =
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Outfit:wght@300;400;500;600;700&display=swap');`;
 
-const COLORS = {
+const DARK_COLORS = {
   bg: "#030303", surface: "rgba(15, 15, 15, 0.85)", surfaceAlt: "rgba(25, 25, 25, 0.75)",
   border: "rgba(255, 255, 255, 0.15)", accent: "#ffffff", accentDim: "rgba(255, 255, 255, 0.1)",
   accentHover: "#f0f0f0", gold: "#e0e0e0", blue: "#ffffff",
   pink: "#cccccc", text: "#f5f5f5", muted: "#888888", danger: "#ff5555",
   admin: "#e2e2e2",
 };
+
+const LIGHT_COLORS = {
+  bg: "#f4f6f8", surface: "#ffffff", surfaceAlt: "#f0f2f5",
+  border: "rgba(0, 0, 0, 0.15)", accent: "#111111", accentDim: "rgba(0, 0, 0, 0.12)",
+  accentHover: "#000000", gold: "#b8860b", blue: "#007bff",
+  pink: "#d81b60", text: "#0f172a", muted: "#475569", danger: "#dc3545",
+  admin: "#1e293b",
+};
+
+const _savedTheme = localStorage.getItem("zx_theme") || "dark";
+const COLORS = { ...(_savedTheme === "light" ? LIGHT_COLORS : DARK_COLORS) };
+if (typeof document !== "undefined") {
+  document.body.classList.add(_savedTheme === "light" ? "light-mode" : "dark-mode");
+}
+
+function applyTheme(theme) {
+  const src = theme === "light" ? LIGHT_COLORS : DARK_COLORS;
+  Object.keys(src).forEach(k => { COLORS[k] = src[k]; });
+  if (typeof document !== "undefined") {
+    if (theme === "light") {
+      document.body.classList.add("light-mode");
+      document.body.classList.remove("dark-mode");
+    } else {
+      document.body.classList.add("dark-mode");
+      document.body.classList.remove("light-mode");
+    }
+  }
+}
+
+const ThemeContext = createContext({ theme: "dark", setTheme: () => {} });
 
 const ROLES = [
   { id: "owner", label: "Owner", color: "#ff6b35", icon: "👑", desc: "Full control" },
@@ -26,7 +56,7 @@ const ROLES = [
   { id: "member", label: "Member", color: "#6b7585", icon: "👤", desc: "Regular member" },
 ];
 
-const css = `
+function getCss() { return `
   ${FONTS}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%}
@@ -38,8 +68,10 @@ const css = `
   @keyframes badgePop{0%{transform:scale(0) rotate(-15deg)}70%{transform:scale(1.2) rotate(4deg)}100%{transform:scale(1) rotate(0deg)}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
   @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-  @keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
   @keyframes neonPulse{0%,100%{box-shadow:0 0 10px ${COLORS.accentDim};}50%{box-shadow:0 0 20px ${COLORS.accent}44, 0 0 30px ${COLORS.accent}22;}}
+  h1, h2, h3, h4, h5, h6 { color: ${COLORS.text} !important; }
+  body.light-mode .brand-name { color: #007bff !important; text-shadow: 0 0 10px rgba(0, 123, 255, 0.6), 0 0 20px rgba(0, 123, 255, 0.4) !important; }
+  body.light-mode .brand-name span { color: #007bff !important; text-shadow: 0 0 10px rgba(0, 123, 255, 0.8), 0 0 20px rgba(0, 123, 255, 0.6) !important; }
   img{max-width:100%;height:auto}
   textarea,input,select{font-family:'Outfit',sans-serif}
   .main-container{display:flex;min-height:100vh}
@@ -93,7 +125,7 @@ const css = `
     .post-actions{flex-wrap:wrap}
     .hide-mob{display:none !important}
   }
-`;
+`; }
 
 function clearSession() { window._authToken = null; window._adminToken = null; localStorage.removeItem("zx_token"); localStorage.removeItem("zx_admin_token"); sessionStorage.clear(); }
 
@@ -270,7 +302,7 @@ function Card({ children, style = {}, glow = false }) {
 
 function Btn({ children, onClick, variant = "primary", disabled = false, style = {} }) {
   const base = { display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, padding: "10px 22px", fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 14, cursor: disabled ? "not-allowed" : "pointer", transition: "all .2s", opacity: disabled ? .5 : 1, textShadow: "0 0 3px rgba(255,255,255,0.3)", ...style };
-  const variants = { primary: { background: COLORS.accent, color: "#000", boxShadow: `0 0 15px ${COLORS.accent}88` }, ghost: { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accent}`, boxShadow: `0 0 10px ${COLORS.accentDim}, inset 0 0 10px ${COLORS.accentDim}` }, danger: { background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44`, boxShadow: `0 0 10px ${COLORS.danger}44` }, admin: { background: COLORS.admin + "22", color: COLORS.admin, border: `1px solid ${COLORS.admin}44`, boxShadow: `0 0 10px ${COLORS.admin}44` } };
+  const variants = { primary: { background: COLORS.accent, color: COLORS.bg, boxShadow: `0 0 15px ${COLORS.accent}88` }, ghost: { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accent}`, boxShadow: `0 0 10px ${COLORS.accentDim}, inset 0 0 10px ${COLORS.accentDim}` }, danger: { background: COLORS.danger + "22", color: COLORS.danger, border: `1px solid ${COLORS.danger}44`, boxShadow: `0 0 10px ${COLORS.danger}44` }, admin: { background: COLORS.admin + "22", color: COLORS.admin, border: `1px solid ${COLORS.admin}44`, boxShadow: `0 0 10px ${COLORS.admin}44` } };
   return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled} onMouseOver={e => !disabled && (e.currentTarget.style.filter = "brightness(1.2)")} onMouseOut={e => e.currentTarget.style.filter = "brightness(1)"}>{children}</button>;
 }
 
@@ -613,7 +645,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
                   <input
                     value={name} onChange={e => setName(e.target.value)}
                     className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500"
-                    placeholder="Enter YourName"
+                    placeholder="Enter Your Name"
                   />
                 </div>
               </div>
@@ -700,7 +732,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
                 <div className="space-y-4">
                   <div className="space-y-1.5 text-left">
                     <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Your Name *</label>
-                    <input value={suppName} onChange={e => setSuppName(e.target.value)} className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" placeholder="John Doe" />
+                    <input value={suppName} onChange={e => setSuppName(e.target.value)} className="w-full h-[52px] px-4 bg-[#111] border border-white/20 rounded-xl focus:border-white focus:ring-[2px] focus:ring-white/30 focus:outline-none transition-all duration-300 text-white placeholder-gray-500" placeholder="Your Name" />
                   </div>
                   <div className="space-y-1.5 text-left">
                     <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Email *</label>
@@ -776,7 +808,7 @@ function Sidebar({ active, setActive, user, onLogout, onAvatarClick }) {
   return (
     <div className="sidebar-wrap" style={{ background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", padding: "20px 12px", height: "100vh", position: "sticky", top: 0, overflowY: "auto" }}>
       <div style={{ padding: "0 4px", marginBottom: 24 }}>
-        <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px" }}>
+        <h2 className="brand-name" style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 22, letterSpacing: "-0.5px" }}>
           Zuxter<span style={{ color: COLORS.accent, textShadow: `0 0 12px ${COLORS.accent}88` }}>X</span>
         </h2>
         <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>AI Study Platform</div>
@@ -912,11 +944,12 @@ function FollowManageCard({ user, onUserUpdate }) {
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
 
 function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
+  const { theme, setTheme } = useContext(ThemeContext);
   const fileRef = useRef(null);
   const [currentTab, setCurrentTab] = useState("settings"); // "settings" | "posts"
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(null); // null | "security" | "account" | "password"
+  const [drawerOpen, setDrawerOpen] = useState(null); // null | "security" | "account" | "password" | "appearance"
 
   const [newName, setNewName] = useState(user.name || "");
   const [newBio, setNewBio] = useState(user.bio || "");
@@ -1097,6 +1130,7 @@ function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
                 { id: "account", icon: "👤", label: "Account Details", sub: "Name, bio, email" },
                 { id: "password", icon: "🔑", label: "Change Password", sub: "Update your password" },
                 { id: "security", icon: "🛡️", label: "Security & Privacy", sub: "Message privacy controls" },
+                { id: "appearance", icon: "🎨", label: "Appearance", sub: theme === "light" ? "Light mode" : "Dark mode" },
                 { id: "stats", icon: "📊", label: "Stats & Achievements", sub: `XP ${user.xp || 0} · Streak ${user.streak || 0}` },
               ].map(item => (
                 <button key={item.id} onClick={() => setDrawerOpen(item.id)}
@@ -1138,6 +1172,7 @@ function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
                     {drawerOpen === "password" && "🔑 Change Password"}
                     {drawerOpen === "security" && "🛡️ Security & Privacy"}
                     {drawerOpen === "stats" && "📊 Stats"}
+                    {drawerOpen === "appearance" && "🎨 Appearance"}
                   </div>
                   <button onClick={() => setDrawerOpen(null)} style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16, color: COLORS.muted, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
                 </div>
@@ -1227,6 +1262,42 @@ function ProfilePage({ user, onUserUpdate, onBack, onLogout }) {
                           <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4 }}>{s.label}</div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* ── Appearance ── */}
+                  {drawerOpen === "appearance" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" }}>
+                        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${COLORS.border}` }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, fontFamily: "'Syne',sans-serif", marginBottom: 4 }}>🌗 Theme Mode</div>
+                          <div style={{ fontSize: 12, color: COLORS.muted }}>Choose your preferred appearance. It stays until you change it manually.</div>
+                        </div>
+                        {[
+                          { val: "light", icon: "☀️", label: "Light Mode", desc: "Clean, bright interface" },
+                          { val: "dark", icon: "🌙", label: "Dark Mode", desc: "Easy on the eyes" },
+                        ].map(opt => (
+                          <button key={opt.val}
+                            onClick={() => setTheme(opt.val)}
+                            style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 16px", cursor: "pointer", background: theme === opt.val ? COLORS.accent + "0f" : "transparent", transition: "background .15s", width: "100%", border: "none", borderBottom: `1px solid ${COLORS.border}`, textAlign: "left" }}
+                            onMouseOver={e => e.currentTarget.style.background = COLORS.accent + "12"}
+                            onMouseOut={e => e.currentTarget.style.background = theme === opt.val ? COLORS.accent + "0f" : "transparent"}>
+                            <span style={{ fontSize: 24, width: 32, textAlign: "center" }}>{opt.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: 14, color: theme === opt.val ? COLORS.accent : COLORS.text, fontFamily: "'Outfit',sans-serif" }}>{opt.label}</div>
+                              <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>{opt.desc}</div>
+                            </div>
+                            <div style={{ width: 44, height: 24, borderRadius: 12, background: theme === opt.val ? COLORS.accent : COLORS.border, position: "relative", transition: "background .25s", flexShrink: 0 }}>
+                              <div style={{ width: 18, height: 18, borderRadius: "50%", background: theme === opt.val ? (theme === "dark" ? "#000" : "#fff") : COLORS.muted, position: "absolute", top: 3, left: theme === opt.val ? 23 : 3, transition: "left .25s, background .25s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "14px 16px" }}>
+                        <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.6 }}>
+                          💡 Your theme preference is saved locally and will persist across sessions until you manually switch it.
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -2113,7 +2184,7 @@ function AdminPanel({ adminEmail, onLogout }) {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: COLORS.bg }}>
-      <style>{css}</style>
+      <style>{getCss()}</style>
 
       {/* LEFT — user list */}
       <div style={{ width: 280, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0 }}>
@@ -2747,7 +2818,7 @@ function ResultBlock({ text, label, color = COLORS.accent }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div style={{ background: "linear-gradient(145deg,#0d1420,#0f172a)", border: `1px solid ${color}33`, borderRadius: 16, padding: "20px 22px", marginTop: 16, animation: "fadeUp .4s ease", boxShadow: `0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${color}11` }}>
+    <div style={{ background: `linear-gradient(145deg, ${COLORS.surface}, ${COLORS.surfaceAlt})`, border: `1px solid ${color}33`, borderRadius: 16, padding: "20px 22px", marginTop: 16, animation: "fadeUp .4s ease", boxShadow: `0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px ${color}11` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 4, height: 28, borderRadius: 4, background: `linear-gradient(to bottom,${color},${color}66)` }} />
@@ -3078,6 +3149,13 @@ export default function App() {
   const [notifCount, setNotifCount] = useState(0);
   const [msgCount, setMsgCount] = useState(0);
   const [restoring, setRestoring] = useState(true);
+  const [theme, setThemeState] = useState(() => localStorage.getItem("zx_theme") || "dark");
+
+  function setTheme(t) {
+    localStorage.setItem("zx_theme", t);
+    applyTheme(t);
+    setThemeState(t);
+  }
 
   // Restore session from localStorage on page load / refresh
   useEffect(() => {
@@ -3162,7 +3240,7 @@ export default function App() {
           }
         }
       `}</style>
-      <div className="spline-bg-wrap" style={{ position: "fixed", inset: 0, zIndex: -2, opacity: user && !adminUser ? 0.45 : 1, transition: "opacity 1.5s ease", pointerEvents: "none", overflow: "hidden" }}>
+      <div className="spline-bg-wrap" style={{ position: "fixed", inset: 0, zIndex: -2, opacity: theme === "light" ? 0.08 : (user && !adminUser ? 0.45 : 1), transition: "opacity 1.5s ease", pointerEvents: "none", overflow: "hidden" }}>
         <iframe
           src="https://my.spline.design/retrofuturisticcircuitloop-26VXgZZN9YuD1DemISWkC4US/"
           frameBorder="0"
@@ -3172,7 +3250,7 @@ export default function App() {
           title="Background animation"
         />
       </div>
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", background: `radial-gradient(circle at center, transparent ${user && !adminUser ? '40%' : '0%'}, #05080f ${user && !adminUser ? '150%' : '85%'})`, zIndex: -1 }} />
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", background: theme === "light" ? `radial-gradient(circle at center, transparent 0%, #f0f2f5 85%)` : `radial-gradient(circle at center, transparent ${user && !adminUser ? '40%' : '0%'}, #05080f ${user && !adminUser ? '150%' : '85%'})`, zIndex: -1 }} />
     </>
   );
 
@@ -3264,10 +3342,11 @@ export default function App() {
   );
 
   return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
     <>
       {splineBg}
       <div className="main-container" style={{ display: "flex", width: "100%", height: "100vh", overflow: "hidden" }} onClick={e => { if (showNotifs && !e.target.closest(".notif-panel") && !e.target.closest(".notif-btn")) setShowNotifs(false); }}>
-        <style>{css}</style>
+        <style>{getCss()}</style>
 
         {/* Desktop sidebar */}
         {sidebarWithMsg}
@@ -3311,6 +3390,7 @@ export default function App() {
         )}
       </div>
     </>
+    </ThemeContext.Provider>
   );
 }
 
