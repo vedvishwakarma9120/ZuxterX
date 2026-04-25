@@ -45,7 +45,7 @@ function applyTheme(theme) {
   }
 }
 
-const ThemeContext = createContext({ theme: "dark", setTheme: () => {} });
+const ThemeContext = createContext({ theme: "dark", setTheme: () => { } });
 
 const ROLES = [
   { id: "owner", label: "Owner", color: "#ff6b35", icon: "👑", desc: "Full control" },
@@ -56,7 +56,8 @@ const ROLES = [
   { id: "member", label: "Member", color: "#6b7585", icon: "👤", desc: "Regular member" },
 ];
 
-function getCss() { return `
+function getCss() {
+  return `
   ${FONTS}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%}
@@ -125,7 +126,8 @@ function getCss() { return `
     .post-actions{flex-wrap:wrap}
     .hide-mob{display:none !important}
   }
-`; }
+`;
+}
 
 function clearSession() { window._authToken = null; window._adminToken = null; localStorage.removeItem("zx_token"); localStorage.removeItem("zx_admin_token"); sessionStorage.clear(); }
 
@@ -135,7 +137,7 @@ const _memCache = {};
 function cacheSet(key, data, ttlMs) {
   const entry = { data, ts: Date.now(), ttl: ttlMs };
   _memCache[key] = entry;
-  try { sessionStorage.setItem("zx_c_" + key, JSON.stringify(entry)); } catch {}
+  try { sessionStorage.setItem("zx_c_" + key, JSON.stringify(entry)); } catch { }
 }
 
 function cacheGet(key) {
@@ -145,7 +147,7 @@ function cacheGet(key) {
     try {
       const raw = sessionStorage.getItem("zx_c_" + key);
       if (raw) { entry = JSON.parse(raw); _memCache[key] = entry; }
-    } catch {}
+    } catch { }
   }
   if (!entry) return { data: null, fresh: false };
   const age = Date.now() - entry.ts;
@@ -160,7 +162,7 @@ function cacheDel(keyPrefix) {
       const k = sessionStorage.key(i);
       if (k && k.startsWith("zx_c_" + keyPrefix)) sessionStorage.removeItem(k);
     }
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -186,7 +188,7 @@ async function cachedFetch(cacheKey, url, opts, ttlMs, onData) {
       cacheSet(cacheKey, data, ttlMs);
       onData(data);
     }
-  } catch {}
+  } catch { }
 }
 
 // Cache TTLs
@@ -651,7 +653,7 @@ function AuthScreen({ onLogin, onAdminLogin }) {
               </div>
             )}
 
-            {(mode === "login" || mode === "admin" || signupStep === "form") && (
+            {(mode === "login" || mode === "admin" || (mode === "signup" && signupStep === "form") || (mode === "forgot" && signupStep === "form")) && (
               <div className="space-y-1.5 text-left">
                 <label className="text-xs uppercase tracking-[0.05em] font-semibold text-gray-400 ml-1">Email Address</label>
                 <div className="relative group">
@@ -3343,53 +3345,54 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
-    <>
-      {splineBg}
-      <div className="main-container" style={{ display: "flex", width: "100%", height: "100vh", overflow: "hidden" }} onClick={e => { if (showNotifs && !e.target.closest(".notif-panel") && !e.target.closest(".notif-btn")) setShowNotifs(false); }}>
-        <style>{getCss()}</style>
+      <>
+        {splineBg}
+        <div className="main-container" style={{ display: "flex", width: "100%", height: "100vh", overflow: "hidden" }} onClick={e => { if (showNotifs && !e.target.closest(".notif-panel") && !e.target.closest(".notif-btn")) setShowNotifs(false); }}>
+          <style>{getCss()}</style>
 
-        {/* Desktop sidebar */}
-        {sidebarWithMsg}
+          {/* Desktop sidebar */}
+          {sidebarWithMsg}
 
-        {/* Mobile top bar */}
-        <MobileTopBar
-          user={user}
-          active={active}
-          notifCount={notifCount}
-          msgCount={msgCount}
-          onAvatarClick={() => navigateTo("profile")}
-          onNotifClick={() => setShowNotifs(v => !v)}
-          onMsgClick={() => navigateTo("messages")}
-        />
+          {/* Mobile top bar */}
+          <MobileTopBar
+            user={user}
+            active={active}
+            notifCount={notifCount}
+            msgCount={msgCount}
+            onAvatarClick={() => navigateTo("profile")}
+            onNotifClick={() => setShowNotifs(v => !v)}
+            onMsgClick={() => navigateTo("messages")}
+            onSupportClick={() => navigateTo("support")}
+          />
 
-        {/* Notifications panel */}
-        {showNotifs && (
-          <div className="notif-panel">
-            <NotificationsPanel user={user} onClose={() => setShowNotifs(false)} onNavigate={navigateTo} />
-          </div>
-        )}
-
-        {/* Main content */}
-        <main className="main-scroll" style={{ flex: 1, maxWidth: "100%" }}>
-          {renderPage()}
-        </main>
-
-        {/* Mobile bottom nav */}
-        <MobileBottomNav active={active} setActive={navigateTo} />
-
-        {/* Badge toast */}
-        {newBadge && (
-          <div className="badge-toast" style={{ position: "fixed", bottom: 28, right: 28, background: COLORS.surface, border: `1px solid ${COLORS.gold}55`, borderRadius: 16, padding: "16px 22px", boxShadow: `0 8px 32px ${COLORS.gold}22`, animation: "badgePop .5s ease", display: "flex", alignItems: "center", gap: 14, zIndex: 999 }}>
-            <span style={{ fontSize: 36 }}>{newBadge.icon}</span>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>Badge Unlocked!</div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 16, marginTop: 2 }}>{newBadge.label}</div>
-              <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 3 }}>{newBadge.desc}</div>
+          {/* Notifications panel */}
+          {showNotifs && (
+            <div className="notif-panel">
+              <NotificationsPanel user={user} onClose={() => setShowNotifs(false)} onNavigate={navigateTo} />
             </div>
-          </div>
-        )}
-      </div>
-    </>
+          )}
+
+          {/* Main content */}
+          <main className="main-scroll" style={{ flex: 1, maxWidth: "100%" }}>
+            {renderPage()}
+          </main>
+
+          {/* Mobile bottom nav */}
+          <MobileBottomNav active={active} setActive={navigateTo} />
+
+          {/* Badge toast */}
+          {newBadge && (
+            <div className="badge-toast" style={{ position: "fixed", bottom: 28, right: 28, background: COLORS.surface, border: `1px solid ${COLORS.gold}55`, borderRadius: 16, padding: "16px 22px", boxShadow: `0 8px 32px ${COLORS.gold}22`, animation: "badgePop .5s ease", display: "flex", alignItems: "center", gap: 14, zIndex: 999 }}>
+              <span style={{ fontSize: 36 }}>{newBadge.icon}</span>
+              <div>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>Badge Unlocked!</div>
+                <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 16, marginTop: 2 }}>{newBadge.label}</div>
+                <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 3 }}>{newBadge.desc}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </>
     </ThemeContext.Provider>
   );
 }
@@ -3849,13 +3852,17 @@ function NotificationsPanel({ user, onClose, onNavigate }) {
 
 // ─── MOBILE TOP BAR ───────────────────────────────────────────────────────────
 
-function MobileTopBar({ user, onAvatarClick, onNotifClick, onMsgClick, notifCount, msgCount, active }) {
+function MobileTopBar({ user, onAvatarClick, onNotifClick, onMsgClick, onSupportClick, notifCount, msgCount, active }) {
   return (
     <div className="mobile-topbar">
       <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 20 }}>
         Zuxter<span style={{ color: COLORS.accent }}>X</span>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {/* Support */}
+        <button onClick={onSupportClick} style={{ position: "relative", background: active === "support" ? COLORS.pink + "15" : "transparent", border: `1px solid ${active === "support" ? COLORS.pink + "55" : COLORS.border}`, borderRadius: 10, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
+          🎫
+        </button>
         {/* Messages */}
         <button onClick={onMsgClick} style={{ position: "relative", background: active === "messages" ? COLORS.accent + "22" : "transparent", border: `1px solid ${active === "messages" ? COLORS.accent + "44" : COLORS.border}`, borderRadius: 10, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
           💬
