@@ -20,7 +20,7 @@ export const COLORS = { ...(_savedTheme === "light" ? LIGHT_COLORS : DARK_COLORS
 export const BASE_URL =
   typeof window !== "undefined" && window.location.hostname === "localhost"
     ? "http://localhost:5000"
-    : "https://zuxter-backend.onrender.com";
+    : "https://zuxterx.onrender.com";
 
 export const CACHE_TTL = {
   leaderboard: 60 * 1000,       // 60s
