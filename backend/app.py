@@ -2,6 +2,7 @@ import os
 import re
 import time
 import secrets
+from functools import wraps
 from datetime import datetime, date, timedelta, timezone
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -145,6 +146,24 @@ def serialize_user(u):
         "banExpires":   u.get("banExpires", None),
     }
 
+def serialize_public_user(u):
+    return {
+        "id":           str(u["_id"]),
+        "name":         u.get("name", ""),
+        "xp":           u.get("xp", 0),
+        "streak":       u.get("streak", 0),
+        "maxStreak":    u.get("maxStreak", 0),
+        "badges":       u.get("badges", []),
+        "customBadges": u.get("customBadges", []),
+        "specialBadges": u.get("specialBadges", []),
+        "avatar":       u.get("avatar", None),
+        "followers":    u.get("followers", []),
+        "following":    u.get("following", []),
+        "bio":          u.get("bio", ""),
+        "createdAt":    u.get("createdAt", ""),
+    }
+
+
 # ── Helper: purge ghost IDs from a user's followers/following ────────────────
 def purge_ghost_ids(user_id: str):
     """Remove any follower/following IDs that no longer exist in the users collection."""
@@ -203,6 +222,22 @@ def require_admin():
     except Exception:
         pass
     return None, False
+
+def require_admin_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        admin_email, ok = require_admin()
+        if not ok:
+            return jsonify({"msg": "Unauthorized"}), 403
+        
+        # Check if the function signature accepts admin_email
+        import inspect
+        sig = inspect.signature(f)
+        if "admin_email" in sig.parameters:
+            kwargs["admin_email"] = admin_email
+            
+        return f(*args, **kwargs)
+    return decorated
 
 def get_current_user_id():
     """Get user id from JWT, returns None if invalid."""
@@ -388,10 +423,6 @@ def login():
             return jsonify({"msg": msg}), 403
     users.update_one({"_id": u["_id"]}, {"$set": {"lastSeen": datetime.utcnow().isoformat()}})
     token = create_access_token(identity=str(u["_id"]))
-    # Clean up ghost follower/following IDs on every login
-    purge_ghost_ids(str(u["_id"]))
-    # Refetch after purge
-    u = users.find_one({"_id": u["_id"]})
     return jsonify({**serialize_user(u), "token": token})
 
 
@@ -616,6 +647,9 @@ def leaderboard():
 @app.route("/api/ai", methods=["POST"])
 @jwt_required()
 def ai():
+    user_id = get_jwt_identity()
+    if is_rate_limited(f"ai:{user_id}", 10, 60):
+        return jsonify({"msg": "Too many requests. Please try again later."}), 429
     try:
         data       = request.json or {}
         user_input = data.get("prompt")
@@ -850,7 +884,7 @@ def get_user_profile(user_id):
         return jsonify({"msg": "Invalid ID"}), 400
     if not u:
         return jsonify({"msg": "User not found"}), 404
-    return jsonify(serialize_user(u))
+    return jsonify(serialize_public_user(u))
 
 
 @app.route("/connect/user/<user_id>/posts", methods=["GET"])
@@ -990,7 +1024,7 @@ def admin_login():
         return jsonify({"msg": "Too many attempts. Please wait."}), 429
     if not ADMIN_EMAILS or not ADMIN_PASSWORD:
         return jsonify({"msg": "Admin not configured on server"}), 500
-    if email not in ADMIN_EMAILS or password != ADMIN_PASSWORD:
+    if email not in ADMIN_EMAILS or not secrets.compare_digest(password, ADMIN_PASSWORD):
         return jsonify({"msg": "Invalid credentials"}), 403
     admin_token = create_access_token(
         identity=email,
@@ -1001,17 +1035,15 @@ def admin_login():
 
 
 @app.route("/admin/users", methods=["GET"])
+@require_admin_auth
 def admin_get_users():
-    _, ok = require_admin()
-    if not ok: return jsonify({"msg": "Unauthorized"}), 403
     all_u = list(users.find({}, {"password": 0, "avatar": 0}))
     return jsonify([serialize_user(u) for u in all_u])
 
 
 @app.route("/admin/online-users", methods=["GET"])
+@require_admin_auth
 def admin_online_users():
-    _, ok = require_admin()
-    if not ok: return jsonify({"msg": "Unauthorized"}), 403
     # Users active in last 5 minutes
     cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
     online = list(users.find({"lastSeen": {"$gte": cutoff}, "banned": {"$ne": True}}, {"password": 0}))
@@ -1026,17 +1058,15 @@ def admin_online_users():
 
 
 @app.route("/admin/tickets", methods=["GET"])
+@require_admin_auth
 def admin_get_tickets():
-    _, ok = require_admin()
-    if not ok: return jsonify({"msg": "Unauthorized"}), 403
     all_tickets = list(tickets.find({"source": {"$ne": "guest"}}).sort("createdAt", -1))
     return jsonify([serialize_ticket(t) for t in all_tickets])
 
 
 @app.route("/admin/guest-tickets", methods=["GET"])
+@require_admin_auth
 def admin_get_guest_tickets():
-    _, ok = require_admin()
-    if not ok: return jsonify({"msg": "Unauthorized"}), 403
     guest_tickets = list(tickets.find({"source": "guest"}).sort("createdAt", -1))
     return jsonify([serialize_ticket(t) for t in guest_tickets])
 
@@ -1234,7 +1264,7 @@ def admin_reply_ticket(ticket_id):
 
               <div style="background:#111820;border:1px solid #1f2530;border-radius:12px;
                           padding:18px 20px;margin:24px 0;font-size:14px;line-height:1.75;">
-                {reply}
+                {html_escape(reply)}
               </div>
 
               <hr style="border:none;border-top:1px solid #1f2530;margin:28px 0;">
@@ -1673,7 +1703,23 @@ def admin_delete_user(user_id):
 
 @app.route("/")
 def home():
-    return "Zuxter X Backend Running 🚀"
+    status = {
+        "status": "online",
+        "message": "Zuxter X Backend Running 🚀",
+        "database": "unknown",
+        "jwt_configured": False
+    }
+    if app.config.get("JWT_SECRET_KEY"):
+        status["jwt_configured"] = True
+    try:
+        # Use a short timeout so the diagnostics page responds quickly
+        from pymongo import MongoClient as TempMongoClient
+        temp_client = TempMongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        temp_client.admin.command('ping')
+        status["database"] = "connected"
+    except Exception as e:
+        status["database"] = f"failed: {str(e)}"
+    return jsonify(status)
 
 
 
