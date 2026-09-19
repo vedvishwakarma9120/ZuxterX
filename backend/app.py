@@ -56,6 +56,7 @@ tickets = db["support_tickets"]
 custom_achievements = db["custom_achievements"]
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "vedvishwakarma9120@gmail.com")
 
 otp_store = {}  # {email: {"otp": "...", "created": timestamp, "attempts": 0}}
 
@@ -330,7 +331,7 @@ def send_otp():
             "Content-Type": "application/json"
         }
         payload = {
-            "sender": {"name": "ZuxterX", "email": "vedvishwakarma9120@gmail.com"},
+            "sender": {"name": "ZuxterX", "email": BREVO_SENDER_EMAIL},
             "to": [{"email": email}],
             "subject": "ZuxterX — Your Verification OTP",
             "htmlContent": html_content
@@ -480,7 +481,7 @@ def forgot_password_otp():
             "Content-Type": "application/json"
         }
         payload = {
-            "sender": {"name": "ZuxterX", "email": "vedvishwakarma9120@gmail.com"},
+            "sender": {"name": "ZuxterX", "email": BREVO_SENDER_EMAIL},
             "to": [{"email": email}],
             "subject": "ZuxterX — Password Reset",
             "htmlContent": html_content
@@ -1245,7 +1246,7 @@ def admin_reply_ticket(ticket_id):
     user_name    = ticket.get("userName", "User")
     subject      = ticket.get("subject", "Your Support Request")
     # Always use the Brevo-verified sender. Admin identity shown in the body.
-    VERIFIED_SENDER = "vedvishwakarma9120@gmail.com"
+    VERIFIED_SENDER = BREVO_SENDER_EMAIL
     replied_by   = admin_email or VERIFIED_SENDER
 
     if user_email and "@" in user_email and BREVO_API_KEY:
